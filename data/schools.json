@@ -1,0 +1,92 @@
+{
+  "schools": [
+    {
+      "id": "atago",
+      "name": "あたご自動車学校",
+      "isTarget": true,
+      "isPlaceholder": false,
+      "pricing": {
+        "baseAT": 335855,
+        "baseMT": 353675,
+        "nightSurcharge": 27500,
+        "shortTermSurcharge": 22000,
+        "overLessonFee": 5940,
+        "skillRetestFee": 5500,
+        "graduationRetestFee": 5500,
+        "provisionalWrittenRetestFee": 1800,
+        "freeOverLessonCount": 0,
+        "freeSkillRetestCount": 0,
+        "freeGraduationRetestCount": 0,
+        "freeProvisionalWrittenRetestCount": 0,
+        "studentDiscount": 0
+      },
+      "campaign": {
+        "label": "夏の入校応援キャンペーン",
+        "freeCouponCount": 0,
+        "freeRetestCount": 0,
+        "extraDiscount": 0
+      }
+    },
+    {
+      "id": "school-a",
+      "name": "浦上自動車学校",
+      "isTarget": false,
+      "isPlaceholder": false,
+      "pricing": {
+        "baseAT": 346690,
+        "baseMT": 381450,
+        "nightSurcharge": 27500,
+        "shortTermSurcharge": 22000,
+        "overLessonFee": 5932,
+        "skillRetestFee": 4950,
+        "graduationRetestFee": 5500,
+        "provisionalWrittenRetestFee": 1800,
+        "freeOverLessonCount": 0,
+        "freeSkillRetestCount": 0,
+        "freeGraduationRetestCount": 0,
+        "freeProvisionalWrittenRetestCount": 0,
+        "studentDiscount": 0
+      },
+      "campaign": {
+        "label": "",
+        "freeCouponCount": 0,
+        "freeRetestCount": 0,
+        "extraDiscount": 0
+      }
+    },
+    {
+      "id": "school-b",
+      "name": "本原自動車学校",
+      "isTarget": false,
+      "isPlaceholder": false,
+      "pricing": {
+        "baseAT": 333700,
+        "baseMT": 351520,
+        "nightSurcharge": 27500,
+        "shortTermSurcharge": 33000,
+        "overLessonFee": 5940,
+        "skillRetestFee": 5060,
+        "graduationRetestFee": 5720,
+        "provisionalWrittenRetestFee": 1800,
+        "freeOverLessonCount": 0,
+        "freeSkillRetestCount": 0,
+        "freeGraduationRetestCount": 0,
+        "freeProvisionalWrittenRetestCount": 0,
+        "studentDiscount": 0
+      },
+      "campaign": {
+        "label": "",
+        "freeCouponCount": 0,
+        "freeRetestCount": 0,
+        "extraDiscount": 0
+      }
+    }
+  ],
+  "anxietyScenario": {
+    "assumedOverLessonCount": 3,
+    "assumedSkillRetestCount": 1,
+    "assumedGraduationRetestCount": 1,
+    "assumedProvisionalWrittenRetestCount": 1
+  },
+  "updatedAt": "2026-08-20T10:44:14.148Z"
+}
