@@ -1,3 +1,7 @@
+# あたご自動車学校 料金シミュレーター
+
+生徒用ページ (`/student`) と管理者用ページ (`/admin`) を持つ料金比較アプリです。`main` ブランチへのpushで Vercel に自動デプロイされます。
+
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
 ## Getting Started
