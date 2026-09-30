@@ -1,8 +1,8 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { PriceData, School, SchoolCampaign } from "./pricing";
+import { ApplicabilityFlags, PriceData, School, SchoolCampaign, defaultApplicability } from "./pricing";
 
-type LegacyCampaign = Omit<SchoolCampaign, "id" | "enabled">;
+type LegacyCampaign = Omit<SchoolCampaign, "id" | "enabled" | "applicability">;
 
 const DATA_FILE = path.join(process.cwd(), "data", "schools.json");
 const BLOB_PATHNAME = "schools.json";
@@ -31,6 +31,7 @@ const SEED_DATA: PriceData = {
         freeGraduationRetestCount: 0,
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 0,
+        studentDiscountApplicability: defaultApplicability(),
       },
       campaigns: [],
     },
@@ -55,6 +56,7 @@ const SEED_DATA: PriceData = {
         freeGraduationRetestCount: 1,
         freeProvisionalWrittenRetestCount: 1,
         studentDiscount: 10000,
+        studentDiscountApplicability: defaultApplicability(),
       },
       campaigns: [],
     },
@@ -79,11 +81,13 @@ const SEED_DATA: PriceData = {
         freeGraduationRetestCount: 0,
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 8000,
+        studentDiscountApplicability: defaultApplicability(),
       },
       campaigns: [],
     },
   ],
   anxietyScenario: {
+    overLessonChoiceMax: 10,
     assumedOverLessonCount: 3,
     assumedSkillRetestCount: 1,
     assumedGraduationRetestCount: 1,
@@ -138,25 +142,43 @@ async function saveDataToBlob(data: PriceData): Promise<void> {
 }
 
 // 古い保存データに新しいフィールドが無い場合の後方互換用の補完。
+// キャンペーン・学割の適用先が未設定の場合は defaultApplicability()（一般プランのみ）になる。
+// これは「最短・安心パックには適用しない」という仕様変更の意図どおりの挙動。
 function normalize(data: PriceData): PriceData {
   return {
     ...data,
+    anxietyScenario: {
+      ...data.anxietyScenario,
+      overLessonChoiceMax: Math.max(
+        data.anxietyScenario.overLessonChoiceMax ?? 10,
+        data.anxietyScenario.assumedOverLessonCount
+      ),
+    },
     schools: data.schools.map((saved) => {
       // 旧形式（1校1キャンペーン）の `campaign` を `campaigns` 配列へ移行する。
       const { campaign: legacy, ...school } = saved as School & { campaign?: LegacyCampaign };
-      const campaigns =
+      const campaigns: SchoolCampaign[] = (
         school.campaigns ??
         (legacy && (legacy.label || legacy.freeCouponCount || legacy.freeRetestCount || legacy.extraDiscount)
-          ? [{ id: `${school.id}-campaign-1`, enabled: true, ...legacy }]
-          : []);
+          ? [{ id: `${school.id}-campaign-1`, enabled: true, ...legacy, applicability: defaultApplicability() }]
+          : [])
+      ).map((c) => ({ ...c, applicability: normalizeApplicability(c.applicability) }));
       return {
         ...school,
         campaigns,
         hideName: school.hideName ?? !school.isTarget,
-        pricing: { ...school.pricing, safeCourseSurcharge: school.pricing.safeCourseSurcharge ?? 0 },
+        pricing: {
+          ...school.pricing,
+          safeCourseSurcharge: school.pricing.safeCourseSurcharge ?? 0,
+          studentDiscountApplicability: normalizeApplicability(school.pricing.studentDiscountApplicability),
+        },
       };
     }),
   };
+}
+
+function normalizeApplicability(flags?: Partial<ApplicabilityFlags>): ApplicabilityFlags {
+  return flags ? { ...defaultApplicability(), ...flags } : defaultApplicability();
 }
 
 export async function getData(): Promise<PriceData> {

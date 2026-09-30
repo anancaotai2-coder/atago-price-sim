@@ -6,6 +6,7 @@ import {
   PATTERN_LABELS,
   PatternId,
   PriceData,
+  SafetyPackChoice,
   calcSchoolPrice,
 } from "@/lib/pricing";
 
@@ -13,18 +14,25 @@ function formatYen(amount: number): string {
   return `${amount.toLocaleString("ja-JP")}円`;
 }
 
-const PATTERN_ORDER: PatternId[] = ["fast", "safe", "normal"];
+const PATTERN_ORDER: PatternId[] = ["fast", "normal"];
 
 export default function StudentSimulator({ data }: { data: PriceData }) {
   const [pattern, setPattern] = useState<PatternId>("normal");
   const [attribute, setAttribute] = useState<Attribute>("general");
   const [night, setNight] = useState(false);
+  const [safetyPackEnabled, setSafetyPackEnabled] = useState(false);
+  const [overLessonCount, setOverLessonCount] = useState(data.anxietyScenario.assumedOverLessonCount);
+
+  const safetyPack: SafetyPackChoice = useMemo(
+    () => ({ enabled: safetyPackEnabled, overLessonCount }),
+    [safetyPackEnabled, overLessonCount]
+  );
 
   const rows = useMemo(() => {
     const results = data.schools.map((school) => ({
       school,
-      at: calcSchoolPrice(school, pattern, "AT", attribute, night, data.anxietyScenario),
-      mt: calcSchoolPrice(school, pattern, "MT", attribute, night, data.anxietyScenario),
+      at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario),
+      mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario),
     }));
 
     const minAt = Math.min(...results.map((r) => r.at.total));
@@ -33,13 +41,13 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     return results
       .map((r) => ({ ...r, isCheapestAt: r.at.total === minAt, isCheapestMt: r.mt.total === minMt }))
       .sort((a, b) => Number(b.school.isTarget) - Number(a.school.isTarget));
-  }, [data, pattern, attribute, night]);
+  }, [data, pattern, attribute, night, safetyPack]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
       <header className="rounded-2xl bg-emerald-900 px-6 py-7 text-white shadow-sm">
         <p className="text-xs font-semibold tracking-widest text-emerald-300">
-          ATAGO DRIVING SCHOOL
+          {data.schools.find((s) => s.isTarget)?.name ?? ""}
         </p>
         <h1 className="mt-2 text-2xl font-bold sm:text-3xl">料金シミュレーター</h1>
         <p className="mt-2 text-sm text-emerald-100">
@@ -70,7 +78,51 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
           })}
         </div>
 
-        <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">2. あなたについて教えてください</p>
+        <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">2. 安心パックをつけますか？</p>
+        <p className="mb-3 -mt-2 text-xs text-slate-500">
+          技能教習が延びたり、検定に落ちてしまった場合の追加費用も見込んだ金額で比較したいときに選んでください。
+        </p>
+        <div className="flex flex-wrap items-center gap-4">
+          <div className="flex overflow-hidden rounded-lg border border-slate-200">
+            {(
+              [
+                [false, "つけない"],
+                [true, "つける"],
+              ] as [boolean, string][]
+            ).map(([value, label]) => (
+              <button
+                key={String(value)}
+                onClick={() => setSafetyPackEnabled(value)}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  safetyPackEnabled === value
+                    ? "bg-emerald-700 text-white"
+                    : "bg-white text-slate-600 hover:bg-slate-50"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {safetyPackEnabled && (
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              技能教習は何時限まで追加を見込みますか？
+              <select
+                value={overLessonCount}
+                onChange={(e) => setOverLessonCount(Number(e.target.value))}
+                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
+              >
+                {Array.from({ length: data.anxietyScenario.overLessonChoiceMax + 1 }, (_, i) => i).map((n) => (
+                  <option key={n} value={n}>
+                    {n}時限
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+
+        <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">3. あなたについて教えてください</p>
         <div className="flex flex-wrap gap-4">
           <div className="flex overflow-hidden rounded-lg border border-slate-200">
             {(
