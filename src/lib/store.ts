@@ -32,6 +32,8 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 0,
         studentDiscountApplicability: defaultApplicability(),
+        pricingNote: "",
+        discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
@@ -58,6 +60,8 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 1,
         studentDiscount: 10000,
         studentDiscountApplicability: defaultApplicability(),
+        pricingNote: "",
+        discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
@@ -84,6 +88,8 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 8000,
         studentDiscountApplicability: defaultApplicability(),
+        pricingNote: "",
+        discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
@@ -125,7 +131,9 @@ async function getDataFromBlob(): Promise<PriceData> {
   const { head, BlobNotFoundError } = await import("@vercel/blob");
   try {
     const info = await head(BLOB_PATHNAME);
-    const res = await fetch(info.url, { cache: "no-store" });
+    // Vercel Blobの公開URLはCDNでキャッシュされるため、保存直後に古い内容が返ることがある。
+    // クエリ文字列を変えて別リソース扱いにし、CDNキャッシュを回避する。
+    const res = await fetch(`${info.url}?v=${info.uploadedAt.getTime()}`, { cache: "no-store" });
     return (await res.json()) as PriceData;
   } catch (e) {
     // 未保存の初回のみ初期値を返す。それ以外の一時的な失敗で既存データを初期値で上書きしないよう、書き込みはしない。
@@ -165,7 +173,7 @@ function normalize(data: PriceData): PriceData {
         (legacy && (legacy.label || legacy.freeCouponCount || legacy.freeRetestCount || legacy.extraDiscount)
           ? [{ id: `${school.id}-campaign-1`, enabled: true, ...legacy, applicability: defaultApplicability() }]
           : [])
-      ).map((c) => ({ ...c, applicability: normalizeApplicability(c.applicability) }));
+      ).map((c) => ({ ...c, applicability: normalizeApplicability(c.applicability), note: c.note ?? "" }));
       return {
         ...school,
         campaigns,
@@ -175,6 +183,8 @@ function normalize(data: PriceData): PriceData {
           ...school.pricing,
           safeCourseSurcharge: school.pricing.safeCourseSurcharge ?? 0,
           studentDiscountApplicability: normalizeApplicability(school.pricing.studentDiscountApplicability),
+          pricingNote: school.pricing.pricingNote ?? "",
+          discountNote: school.pricing.discountNote ?? "",
         },
       };
     }),

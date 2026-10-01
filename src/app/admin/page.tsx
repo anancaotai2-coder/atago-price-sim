@@ -251,6 +251,13 @@ export default function AdminPage() {
                 <NumberField label="短期集中コース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
                 <NumberField label="安心パック加算" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
               </div>
+              <div className="mt-2">
+                <TextField
+                  label="注釈（任意・生徒画面のカード下にまとめて表示されます）"
+                  value={school.pricing.pricingNote}
+                  onChange={(v) => updatePricing(school.id, { pricingNote: v })}
+                />
+              </div>
             </div>
 
             <div className="flex flex-col gap-3 rounded-xl bg-sky-50 p-4 ring-1 ring-sky-100">
@@ -313,6 +320,12 @@ export default function AdminPage() {
                   ＋ 紹介割引を追加する
                 </button>
               </div>
+
+              <TextField
+                label="注釈（任意・学生割引・紹介割引まとめて1つ、生徒画面のカード下に表示されます）"
+                value={school.pricing.discountNote}
+                onChange={(v) => updatePricing(school.id, { discountNote: v })}
+              />
             </div>
 
             <div>
@@ -392,6 +405,13 @@ export default function AdminPage() {
                     <NumberField label="無料クーポン（技能オーバー分）" unit="枚" value={campaign.freeCouponCount} onChange={(v) => updateCampaign(school.id, campaign.id, { freeCouponCount: v })} />
                     <NumberField label="再検定プレゼント" unit="回" value={campaign.freeRetestCount} onChange={(v) => updateCampaign(school.id, campaign.id, { freeRetestCount: v })} />
                     <NumberField label="その他の割引額" unit="円" value={campaign.extraDiscount} onChange={(v) => updateCampaign(school.id, campaign.id, { extraDiscount: v })} />
+                  </div>
+                  <div className="mt-2">
+                    <TextField
+                      label="注釈（任意・生徒画面のカード下に表示されます）"
+                      value={campaign.note}
+                      onChange={(v) => updateCampaign(school.id, campaign.id, { note: v })}
+                    />
                   </div>
                   <div className="mt-2">
                     <p className="mb-1 text-xs font-medium text-slate-500">適用する条件</p>

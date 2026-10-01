@@ -44,6 +44,10 @@ export interface SchoolPricing {
   freeProvisionalWrittenRetestCount: number;
   studentDiscount: number;
   studentDiscountApplicability: ApplicabilityFlags;
+  // 「基本料金」ブロック全体に対する注釈（例：表示価格は税込です、など）。
+  pricingNote: string;
+  // 「割引額」ブロック（学生割引＋紹介割引）全体に対する注釈。
+  discountNote: string;
 }
 
 export interface SchoolCampaign {
@@ -54,6 +58,7 @@ export interface SchoolCampaign {
   freeRetestCount: number;
   extraDiscount: number;
   applicability: ApplicabilityFlags;
+  note: string;
 }
 
 // 紹介割引。学校ごとに自由に名前を付けて追加できる（例：友人紹介、サークル紹介、卒業生紹介）。
@@ -117,6 +122,8 @@ export function createBlankSchool(id: string): School {
       freeProvisionalWrittenRetestCount: 0,
       studentDiscount: 0,
       studentDiscountApplicability: defaultApplicability(),
+      pricingNote: "",
+      discountNote: "",
     },
     campaigns: [],
     referralDiscounts: [],
@@ -132,6 +139,7 @@ export function createBlankCampaign(id: string): SchoolCampaign {
     freeRetestCount: 0,
     extraDiscount: 0,
     applicability: defaultApplicability(),
+    note: "",
   };
 }
 
@@ -144,6 +152,7 @@ export interface PatternResult {
   license: LicenseType;
   total: number;
   breakdown: BreakdownItem[];
+  notes: string[];
 }
 
 export interface SafetyPackChoice {
@@ -233,7 +242,16 @@ export function calcSchoolPrice(
   }
 
   const total = breakdown.reduce((sum, item) => sum + item.amount, 0);
-  return { license, total, breakdown };
+
+  // 今の選択で実際に料金へ反映されているブロックの注釈だけを集める。
+  const notes: string[] = [];
+  if (p.pricingNote) notes.push(p.pricingNote);
+  if (p.discountNote) notes.push(p.discountNote);
+  for (const c of activeCampaigns) {
+    if (c.note) notes.push(c.note);
+  }
+
+  return { license, total, breakdown, notes };
 }
 
 export const PATTERN_LABELS: Record<PatternId, { title: string; subtitle: string }> = {

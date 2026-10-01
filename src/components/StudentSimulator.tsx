@@ -230,6 +230,17 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
               <PriceBlock label="AT（オートマ）" total={at.total} isCheapest={isCheapestAt} breakdown={at.breakdown} />
               <PriceBlock label="MT（マニュアル）" total={mt.total} isCheapest={isCheapestMt} breakdown={mt.breakdown} />
             </div>
+
+            {(() => {
+              const notes = [...new Set([...at.notes, ...mt.notes])];
+              return notes.length > 0 ? (
+                <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-500">
+                  {notes.map((note, i) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+              ) : null;
+            })()}
           </article>
         ))}
       </section>
