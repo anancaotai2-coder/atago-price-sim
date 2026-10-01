@@ -161,6 +161,45 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
           </label>
         </div>
 
+        {data.schools.some((s) => s.referralDiscounts.length > 0) && (
+          <>
+            <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">4. 紹介者はいますか？</p>
+            <div className="flex flex-col gap-3">
+              {data.schools
+                .filter((s) => s.referralDiscounts.length > 0)
+                .map((school) => (
+                  <div key={school.id}>
+                    <p className="mb-1 text-xs font-semibold text-slate-500">{school.name}</p>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: null }))}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                          !referralChoices[school.id]
+                            ? "border-slate-500 bg-slate-100 text-slate-700"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                        }`}
+                      >
+                        利用しない
+                      </button>
+                      {school.referralDiscounts.map((referral) => (
+                        <button
+                          key={referral.id}
+                          onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: referral.id }))}
+                          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                            referralChoices[school.id] === referral.id
+                              ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
+                          }`}
+                        >
+                          {referral.name || "（名称未設定）"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </>
+        )}
       </section>
 
       <section className="flex flex-col gap-4">
@@ -186,37 +225,6 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
                 </span>
               )}
             </div>
-
-            {school.referralDiscounts.length > 0 && (
-              <div className="mt-3">
-                <p className="mb-1 text-xs font-semibold text-slate-500">この学校の紹介制度を利用しますか？</p>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: null }))}
-                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                      !referralChoices[school.id]
-                        ? "border-slate-500 bg-slate-100 text-slate-700"
-                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                    }`}
-                  >
-                    利用しない
-                  </button>
-                  {school.referralDiscounts.map((referral) => (
-                    <button
-                      key={referral.id}
-                      onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: referral.id }))}
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                        referralChoices[school.id] === referral.id
-                          ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
-                      }`}
-                    >
-                      {referral.name || "（名称未設定）"}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <PriceBlock label="AT（オートマ）" total={at.total} isCheapest={isCheapestAt} breakdown={at.breakdown} />
