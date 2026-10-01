@@ -56,6 +56,14 @@ export interface SchoolCampaign {
   applicability: ApplicabilityFlags;
 }
 
+// 紹介割引。学校ごとに自由に名前を付けて追加できる（例：友人紹介、サークル紹介、卒業生紹介）。
+// 他校とは独立しており、同じ名前である必要はない。
+export interface ReferralDiscount {
+  id: string;
+  name: string;
+  amount: number;
+}
+
 export interface School {
   id: SchoolId;
   name: string;
@@ -64,6 +72,7 @@ export interface School {
   hideName: boolean;
   pricing: SchoolPricing;
   campaigns: SchoolCampaign[];
+  referralDiscounts: ReferralDiscount[];
 }
 
 export interface AnxietyScenario {
@@ -79,6 +88,10 @@ export interface PriceData {
   schools: School[];
   anxietyScenario: AnxietyScenario;
   updatedAt: string;
+}
+
+export function createBlankReferralDiscount(id: string): ReferralDiscount {
+  return { id, name: "", amount: 0 };
 }
 
 export function createBlankSchool(id: string): School {
@@ -106,6 +119,7 @@ export function createBlankSchool(id: string): School {
       studentDiscountApplicability: defaultApplicability(),
     },
     campaigns: [],
+    referralDiscounts: [],
   };
 }
 
@@ -144,7 +158,8 @@ export function calcSchoolPrice(
   attribute: Attribute,
   night: boolean,
   safetyPack: SafetyPackChoice,
-  scenario: AnxietyScenario
+  scenario: AnxietyScenario,
+  referralDiscountId: string | null
 ): PatternResult {
   const p = school.pricing;
   const safetyOn = safetyPack.enabled;
@@ -207,6 +222,13 @@ export function calcSchoolPrice(
   for (const c of activeCampaigns) {
     if (c.extraDiscount) {
       breakdown.push({ label: c.label || "キャンペーン割引", amount: -c.extraDiscount });
+    }
+  }
+
+  if (referralDiscountId) {
+    const referral = school.referralDiscounts.find((r) => r.id === referralDiscountId);
+    if (referral?.amount) {
+      breakdown.push({ label: `紹介割引（${referral.name || "名称未設定"}）`, amount: -referral.amount });
     }
   }
 

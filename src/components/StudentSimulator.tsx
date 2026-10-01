@@ -22,6 +22,8 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   const [night, setNight] = useState(false);
   const [safetyPackEnabled, setSafetyPackEnabled] = useState(false);
   const [overLessonCount, setOverLessonCount] = useState(data.anxietyScenario.assumedOverLessonCount);
+  // 紹介割引は学校ごとに内容が違うので、選択も学校ごとに独立して持つ（school.id -> 選んだ紹介割引のid）。
+  const [referralChoices, setReferralChoices] = useState<Record<string, string | null>>({});
 
   const safetyPack: SafetyPackChoice = useMemo(
     () => ({ enabled: safetyPackEnabled, overLessonCount }),
@@ -29,11 +31,14 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   );
 
   const rows = useMemo(() => {
-    const results = data.schools.map((school) => ({
-      school,
-      at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario),
-      mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario),
-    }));
+    const results = data.schools.map((school) => {
+      const referralId = referralChoices[school.id] ?? null;
+      return {
+        school,
+        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referralId),
+        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referralId),
+      };
+    });
 
     const minAt = Math.min(...results.map((r) => r.at.total));
     const minMt = Math.min(...results.map((r) => r.mt.total));
@@ -41,7 +46,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     return results
       .map((r) => ({ ...r, isCheapestAt: r.at.total === minAt, isCheapestMt: r.mt.total === minMt }))
       .sort((a, b) => Number(b.school.isTarget) - Number(a.school.isTarget));
-  }, [data, pattern, attribute, night, safetyPack]);
+  }, [data, pattern, attribute, night, safetyPack, referralChoices]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
@@ -155,6 +160,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
             夜間コースを希望する
           </label>
         </div>
+
       </section>
 
       <section className="flex flex-col gap-4">
@@ -180,6 +186,37 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
                 </span>
               )}
             </div>
+
+            {school.referralDiscounts.length > 0 && (
+              <div className="mt-3">
+                <p className="mb-1 text-xs font-semibold text-slate-500">この学校の紹介制度を利用しますか？</p>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: null }))}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      !referralChoices[school.id]
+                        ? "border-slate-500 bg-slate-100 text-slate-700"
+                        : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                    }`}
+                  >
+                    利用しない
+                  </button>
+                  {school.referralDiscounts.map((referral) => (
+                    <button
+                      key={referral.id}
+                      onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: referral.id }))}
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        referralChoices[school.id] === referral.id
+                          ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700"
+                          : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
+                      }`}
+                    >
+                      {referral.name || "（名称未設定）"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
               <PriceBlock label="AT（オートマ）" total={at.total} isCheapest={isCheapestAt} breakdown={at.breakdown} />

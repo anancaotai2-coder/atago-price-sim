@@ -5,14 +5,21 @@ import {
   AnxietyScenario,
   ApplicabilityFlags,
   PriceData,
+  ReferralDiscount,
   School,
   SchoolCampaign,
   SchoolPricing,
   createBlankCampaign,
+  createBlankReferralDiscount,
   createBlankSchool,
 } from "@/lib/pricing";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+// Date.now() だけだと同一ミリ秒内の連続操作でIDが衝突することがあるため、乱数を混ぜる。
+function uid(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function AdminPage() {
   const [data, setData] = useState<PriceData | null>(null);
@@ -54,7 +61,7 @@ export default function AdminPage() {
   function addCampaign(schoolId: string) {
     const school = data!.schools.find((s) => s.id === schoolId)!;
     updateSchool(schoolId, {
-      campaigns: [...school.campaigns, createBlankCampaign(`campaign-${Date.now()}`)],
+      campaigns: [...school.campaigns, createBlankCampaign(uid("campaign"))],
     });
   }
 
@@ -67,10 +74,29 @@ export default function AdminPage() {
     setData((prev) => (prev ? { ...prev, anxietyScenario: { ...prev.anxietyScenario, ...patch } } : prev));
   }
 
+  function addReferralDiscount(schoolId: string) {
+    const school = data!.schools.find((s) => s.id === schoolId)!;
+    updateSchool(schoolId, {
+      referralDiscounts: [...school.referralDiscounts, createBlankReferralDiscount(uid("referral"))],
+    });
+  }
+
+  function updateReferralDiscount(schoolId: string, discountId: string, patch: Partial<ReferralDiscount>) {
+    const school = data!.schools.find((s) => s.id === schoolId)!;
+    updateSchool(schoolId, {
+      referralDiscounts: school.referralDiscounts.map((r) => (r.id === discountId ? { ...r, ...patch } : r)),
+    });
+  }
+
+  function removeReferralDiscount(schoolId: string, discountId: string) {
+    const school = data!.schools.find((s) => s.id === schoolId)!;
+    updateSchool(schoolId, { referralDiscounts: school.referralDiscounts.filter((r) => r.id !== discountId) });
+  }
+
   function addSchool() {
     setData((prev) => {
       if (!prev) return prev;
-      const id = `school-${Date.now()}`;
+      const id = uid("school");
       return { ...prev, schools: [...prev.schools, createBlankSchool(id)] };
     });
   }
@@ -224,14 +250,68 @@ export default function AdminPage() {
                 <NumberField label="夜間料金加算" unit="円" value={school.pricing.nightSurcharge} onChange={(v) => updatePricing(school.id, { nightSurcharge: v })} />
                 <NumberField label="短期集中コース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
                 <NumberField label="安心パック加算" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
-                <NumberField label="学生割引額" unit="円" value={school.pricing.studentDiscount} onChange={(v) => updatePricing(school.id, { studentDiscount: v })} />
               </div>
-              <div className="mt-2">
-                <p className="mb-1 text-xs font-medium text-slate-500">学生割引を適用する条件</p>
-                <ApplicabilityEditor
-                  value={school.pricing.studentDiscountApplicability}
-                  onChange={(v) => updatePricing(school.id, { studentDiscountApplicability: v })}
+            </div>
+
+            <div className="flex flex-col gap-3 rounded-xl bg-sky-50 p-4 ring-1 ring-sky-100">
+              <p className="text-sm font-semibold text-sky-800">割引額</p>
+
+              <div>
+                <NumberField
+                  label="学生割引額"
+                  unit="円"
+                  value={school.pricing.studentDiscount}
+                  onChange={(v) => updatePricing(school.id, { studentDiscount: v })}
                 />
+                <div className="mt-2">
+                  <p className="mb-1 text-xs font-medium text-slate-500">学生割引を適用する条件</p>
+                  <ApplicabilityEditor
+                    value={school.pricing.studentDiscountApplicability}
+                    onChange={(v) => updatePricing(school.id, { studentDiscountApplicability: v })}
+                  />
+                </div>
+              </div>
+
+              <div>
+                <p className="mb-1 text-xs font-medium text-slate-500">紹介割引（この学校だけの設定です）</p>
+                {school.referralDiscounts.length === 0 && (
+                  <p className="text-xs text-slate-500">紹介割引はまだありません。</p>
+                )}
+                <div className="flex flex-col gap-2">
+                  {school.referralDiscounts.map((referral) => (
+                    <div key={referral.id} className="flex items-end gap-2">
+                      <TextField
+                        label="名称（例：サークル紹介）"
+                        value={referral.name}
+                        onChange={(v) => updateReferralDiscount(school.id, referral.id, { name: v })}
+                      />
+                      <NumberField
+                        label="割引額"
+                        unit="円"
+                        value={referral.amount}
+                        onChange={(v) => updateReferralDiscount(school.id, referral.id, { amount: v })}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (confirm(`「${referral.name || "この紹介割引"}」を削除しますか？`)) {
+                            removeReferralDiscount(school.id, referral.id);
+                          }
+                        }}
+                        className="rounded-lg px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+                      >
+                        削除
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addReferralDiscount(school.id)}
+                  className="mt-2 w-full rounded-lg border border-dashed border-sky-400 bg-white py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
+                >
+                  ＋ 紹介割引を追加する
+                </button>
               </div>
             </div>
 
