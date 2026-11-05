@@ -283,25 +283,11 @@ export default function MobileSimulator({ data }: { data: PriceData }) {
   );
 }
 
-// ロゴ画像は無いので、校名の頭文字のマークと校名を文字で並べる。
+// あたご自動車学校の公式サイト（ds-atago.com）のヘッダーロゴ。校名入りなので画像だけを表示する。
 function Logo({ targetName, small = false }: { targetName: string; small?: boolean }) {
   return (
-    <span className="flex items-center gap-2">
-      <span
-        className={`flex shrink-0 items-center justify-center rounded-lg bg-emerald-600 font-black text-white ${
-          small ? "h-5 w-5 text-[11px]" : "h-8 w-8 text-base"
-        }`}
-        aria-hidden
-      >
-        {targetName.charAt(0)}
-      </span>
-      <span className="flex flex-col leading-none">
-        <span className={`font-bold tracking-wide text-emerald-700 ${small ? "text-[8px]" : "text-[10px]"}`}>
-          ATAGO DRIVING SCHOOL
-        </span>
-        <span className={`mt-0.5 font-bold text-slate-700 ${small ? "text-[9px]" : "text-[12px]"}`}>{targetName}</span>
-      </span>
-    </span>
+    // eslint-disable-next-line @next/next/no-img-element
+    <img src="/atago-logo.jpg" alt={targetName} className={small ? "h-6 w-auto" : "h-9 w-auto"} />
   );
 }
 
