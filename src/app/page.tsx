@@ -22,6 +22,12 @@ export default function Home() {
           生徒用ページへ
         </Link>
         <Link
+          href="/sp"
+          className="rounded-xl bg-emerald-500 px-8 py-4 text-center font-semibold text-white shadow-sm transition hover:bg-emerald-600"
+        >
+          スマホ版へ
+        </Link>
+        <Link
           href="/admin"
           className="rounded-xl border border-slate-300 bg-white px-8 py-4 text-center font-semibold text-slate-700 shadow-sm transition hover:bg-slate-100"
         >
