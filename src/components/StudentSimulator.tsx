@@ -29,8 +29,8 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   const [safetyPackEnabled, setSafetyPackEnabled] = useState(false);
   // 安心保証コースの年齢区分（GuaranteeTier.id）。空文字は未選択、"over-70" は71歳以上（対象外）。
   const [guaranteeAge, setGuaranteeAge] = useState("");
-  // 紹介割引は学校ごとに内容が違うので、選択も学校ごとに独立して持つ（school.id -> 選んだ紹介割引のid）。
-  const [referralChoices, setReferralChoices] = useState<Record<string, string | null>>({});
+  // 紹介の種類（ReferralType.id）。null は紹介者なし。
+  const [referralTypeId, setReferralTypeId] = useState<string | null>(null);
 
   // 高校生は安心保証コースの対象外。
   const isHighSchool = attribute === "student" && studentCategory === "highschool";
@@ -52,11 +52,11 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
 
   const rows = useMemo(() => {
     const results = data.schools.map((school) => {
-      const referralId = referralChoices[school.id] ?? null;
+      const referral = data.referralTypes.find((r) => r.id === referralTypeId) ?? null;
       return {
         school,
-        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referralId, student),
-        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referralId, student),
+        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referral, student),
+        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referral, student),
       };
     });
 
@@ -66,7 +66,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     return results
       .map((r) => ({ ...r, isCheapestAt: r.at.total === minAt, isCheapestMt: r.mt.total === minMt }))
       .sort((a, b) => Number(b.school.isTarget) - Number(a.school.isTarget));
-  }, [data, pattern, attribute, night, safetyPack, referralChoices, student]);
+  }, [data, pattern, attribute, night, safetyPack, referralTypeId, student]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
@@ -255,42 +255,23 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
           </p>
         )}
 
-        {data.schools.some((s) => s.referralDiscounts.length > 0) && (
+        {data.referralTypes.length > 0 && (
           <>
             <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">4. 紹介者はいますか？</p>
-            <div className="flex flex-col gap-3">
-              {data.schools
-                .filter((s) => s.referralDiscounts.length > 0)
-                .map((school) => (
-                  <div key={school.id}>
-                    <p className="mb-1 text-xs font-semibold text-slate-500">{school.name}</p>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: null }))}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          !referralChoices[school.id]
-                            ? "border-slate-500 bg-slate-100 text-slate-700"
-                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
-                        }`}
-                      >
-                        利用しない
-                      </button>
-                      {school.referralDiscounts.map((referral) => (
-                        <button
-                          key={referral.id}
-                          onClick={() => setReferralChoices((prev) => ({ ...prev, [school.id]: referral.id }))}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                            referralChoices[school.id] === referral.id
-                              ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700"
-                              : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
-                          }`}
-                        >
-                          {referral.name || "（名称未設定）"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+            <div className="flex flex-wrap gap-2">
+              {[{ id: null, name: "いない" }, ...data.referralTypes].map((r) => (
+                <button
+                  key={r.id ?? "none"}
+                  onClick={() => setReferralTypeId(r.id)}
+                  className={`rounded-full border px-4 py-2 text-sm font-medium transition ${
+                    referralTypeId === r.id
+                      ? "border-emerald-700 bg-emerald-50 text-emerald-800 ring-2 ring-emerald-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
+                  }`}
+                >
+                  {r.name || "（名称未設定）"}
+                </button>
+              ))}
             </div>
           </>
         )}

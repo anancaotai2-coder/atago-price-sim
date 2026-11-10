@@ -6,17 +6,21 @@ import {
   ApplicabilityFlags,
   GuaranteeTier,
   PriceData,
-  ReferralDiscount,
   School,
   SchoolCampaign,
   SchoolPricing,
-  StudentSchool,
   createBlankCampaign,
-  createBlankReferralDiscount,
   createBlankSchool,
 } from "@/lib/pricing";
 
 type SaveStatus = "idle" | "saving" | "saved" | "error";
+
+// 「名前＋教習所ごとの割引額」で管理する一覧（大学・専門学校、紹介の種類）。
+type NamedListKey = "studentSchools" | "referralTypes";
+const DISCOUNT_FIELD = {
+  studentSchools: "studentSchoolDiscounts",
+  referralTypes: "referralTypeDiscounts",
+} as const;
 
 // Date.now() だけだと同一ミリ秒内の連続操作でIDが衝突することがあるため、乱数を混ぜる。
 function uid(prefix: string): string {
@@ -76,66 +80,46 @@ export default function AdminPage() {
     setData((prev) => (prev ? { ...prev, anxietyScenario: { ...prev.anxietyScenario, ...patch } } : prev));
   }
 
-  function addReferralDiscount(schoolId: string) {
-    const school = data!.schools.find((s) => s.id === schoolId)!;
-    updateSchool(schoolId, {
-      referralDiscounts: [...school.referralDiscounts, createBlankReferralDiscount(uid("referral"))],
-    });
-  }
-
-  function updateReferralDiscount(schoolId: string, discountId: string, patch: Partial<ReferralDiscount>) {
-    const school = data!.schools.find((s) => s.id === schoolId)!;
-    updateSchool(schoolId, {
-      referralDiscounts: school.referralDiscounts.map((r) => (r.id === discountId ? { ...r, ...patch } : r)),
-    });
-  }
-
-  function removeReferralDiscount(schoolId: string, discountId: string) {
-    const school = data!.schools.find((s) => s.id === schoolId)!;
-    updateSchool(schoolId, { referralDiscounts: school.referralDiscounts.filter((r) => r.id !== discountId) });
-  }
-
   function updateGuaranteeTier(id: string, patch: Partial<GuaranteeTier>) {
     setData((prev) =>
       prev ? { ...prev, guaranteeTiers: prev.guaranteeTiers.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : prev
     );
   }
 
-  function addStudentSchool() {
-    setData((prev) =>
-      prev ? { ...prev, studentSchools: [...prev.studentSchools, { id: uid("student-school"), name: "" }] } : prev
-    );
+  function addNamedItem(key: NamedListKey) {
+    setData((prev) => (prev ? { ...prev, [key]: [...prev[key], { id: uid(key), name: "" }] } : prev));
   }
 
-  function updateStudentSchool(id: string, patch: Partial<StudentSchool>) {
-    setData((prev) =>
-      prev ? { ...prev, studentSchools: prev.studentSchools.map((s) => (s.id === id ? { ...s, ...patch } : s)) } : prev
-    );
+  function renameNamedItem(key: NamedListKey, id: string, name: string) {
+    setData((prev) => (prev ? { ...prev, [key]: prev[key].map((x) => (x.id === id ? { ...x, name } : x)) } : prev));
   }
 
-  // 学校を消したら、各教習所に設定していたその学校の割引額も一緒に消す。
-  function removeStudentSchool(id: string) {
+  // 項目を消したら、各教習所に設定していたその項目の割引額も一緒に消す。
+  function removeNamedItem(key: NamedListKey, id: string) {
+    const field = DISCOUNT_FIELD[key];
     setData((prev) =>
       prev
         ? {
             ...prev,
-            studentSchools: prev.studentSchools.filter((s) => s.id !== id),
+            [key]: prev[key].filter((x) => x.id !== id),
             schools: prev.schools.map((school) => {
-              const rest = { ...school.studentSchoolDiscounts };
+              const rest = { ...school[field] };
               delete rest[id];
-              return { ...school, studentSchoolDiscounts: rest };
+              return { ...school, [field]: rest };
             }),
           }
         : prev
     );
   }
 
-  function updateStudentSchoolDiscount(schoolId: string, studentSchoolId: string, amount: number) {
+  function updateNamedDiscount(key: NamedListKey, schoolId: string, id: string, amount: number) {
+    const field = DISCOUNT_FIELD[key];
     const school = data!.schools.find((s) => s.id === schoolId)!;
-    updateSchool(schoolId, {
-      studentSchoolDiscounts: { ...school.studentSchoolDiscounts, [studentSchoolId]: amount },
-    });
+    updateSchool(schoolId, { [field]: { ...school[field], [id]: amount } });
   }
+
+  // 当校を先頭にして、割引額の入力欄を並べる。
+  const orderedSchools = [...data.schools].sort((a, b) => Number(b.isTarget) - Number(a.isTarget));
 
   function addSchool() {
     setData((prev) => {
@@ -235,45 +219,33 @@ export default function AdminPage() {
         </div>
       </section>
 
-      <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="font-bold text-slate-900">学生の通っている学校（大学・専門学校）</h2>
-        <p className="mt-1 text-xs text-slate-500">
-          生徒が「学生 → 大学生・専門学生」を選んだときに出る学校の一覧です。最後に「その他の学校」が自動で付きます。
-          割引額は、下の各教習所の「割引額」欄で学校ごとに設定してください。
-        </p>
-        {data.studentSchools.length === 0 && (
-          <p className="mt-3 text-xs text-slate-500">まだ登録されていません（登録が0件の間は、学校を選ぶ質問は出ません）。</p>
-        )}
-        <div className="mt-3 flex flex-col gap-2">
-          {data.studentSchools.map((s) => (
-            <div key={s.id} className="flex items-end gap-2">
-              <TextField
-                label="学校名（例：長崎大学）"
-                value={s.name}
-                onChange={(v) => updateStudentSchool(s.id, { name: v })}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  if (confirm(`「${s.name || "この学校"}」を削除しますか？各教習所に設定した割引額も消えます。`)) {
-                    removeStudentSchool(s.id);
-                  }
-                }}
-                className="rounded-lg px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
-              >
-                削除
-              </button>
-            </div>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={addStudentSchool}
-          className="mt-3 w-full rounded-lg border border-dashed border-slate-300 bg-white py-2 text-sm font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700"
-        >
-          ＋ 学校を追加する
-        </button>
-      </section>
+      <NamedDiscountList
+        title="学生の通っている学校（大学・専門学校）"
+        description="生徒が「学生 → 大学生・専門学生」を選んだときに出る学校の一覧です。最後に「その他の学校」が自動で付きます。学校を選んだ人には、各教習所の「学生割引額」の代わりにここの割引額を使います。登録が0件の間は、学校を選ぶ質問は出ません。"
+        nameLabel="学校名（例：長崎大学）"
+        addLabel="＋ 学校を追加する"
+        items={data.studentSchools}
+        schools={orderedSchools}
+        discountOf={(school, id) => school.studentSchoolDiscounts[id] ?? 0}
+        onAdd={() => addNamedItem("studentSchools")}
+        onRename={(id, name) => renameNamedItem("studentSchools", id, name)}
+        onRemove={(id) => removeNamedItem("studentSchools", id)}
+        onDiscount={(schoolId, id, v) => updateNamedDiscount("studentSchools", schoolId, id, v)}
+      />
+
+      <NamedDiscountList
+        title="紹介の種類"
+        description="生徒が「紹介者がいる」を選んだときに出る選択肢です。割引額は教習所ごとに入力してください（0円なら割引なし）。登録が0件の間は、紹介者の質問は出ません。"
+        nameLabel="紹介の種類（例：家族からの紹介）"
+        addLabel="＋ 紹介の種類を追加する"
+        items={data.referralTypes}
+        schools={orderedSchools}
+        discountOf={(school, id) => school.referralTypeDiscounts[id] ?? 0}
+        onAdd={() => addNamedItem("referralTypes")}
+        onRename={(id, name) => renameNamedItem("referralTypes", id, name)}
+        onRemove={(id) => removeNamedItem("referralTypes", id)}
+        onDiscount={(schoolId, id, v) => updateNamedDiscount("referralTypes", schoolId, id, v)}
+      />
 
       {data.schools.map((school) => (
         <details
@@ -385,24 +357,6 @@ export default function AdminPage() {
                   value={school.pricing.studentDiscount}
                   onChange={(v) => updatePricing(school.id, { studentDiscount: v })}
                 />
-                {data.studentSchools.length > 0 && (
-                  <div className="mt-3">
-                    <p className="mb-1 text-xs font-medium text-slate-500">
-                      大学・専門学校ごとの学生割引額（選んだ場合は上の学生割引の代わりにこちらを使います）
-                    </p>
-                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                      {data.studentSchools.map((s) => (
-                        <NumberField
-                          key={s.id}
-                          label={s.name || "（名称未設定）"}
-                          unit="円"
-                          value={school.studentSchoolDiscounts[s.id] ?? 0}
-                          onChange={(v) => updateStudentSchoolDiscount(school.id, s.id, v)}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
                 <div className="mt-2">
                   <p className="mb-1 text-xs font-medium text-slate-500">学生割引を適用する条件（学校別の割引にも使います）</p>
                   <ApplicabilityEditor
@@ -412,47 +366,9 @@ export default function AdminPage() {
                 </div>
               </div>
 
-              <div>
-                <p className="mb-1 text-xs font-medium text-slate-500">紹介割引（この学校だけの設定です）</p>
-                {school.referralDiscounts.length === 0 && (
-                  <p className="text-xs text-slate-500">紹介割引はまだありません。</p>
-                )}
-                <div className="flex flex-col gap-2">
-                  {school.referralDiscounts.map((referral) => (
-                    <div key={referral.id} className="flex items-end gap-2">
-                      <TextField
-                        label="名称（例：サークル紹介）"
-                        value={referral.name}
-                        onChange={(v) => updateReferralDiscount(school.id, referral.id, { name: v })}
-                      />
-                      <NumberField
-                        label="割引額"
-                        unit="円"
-                        value={referral.amount}
-                        onChange={(v) => updateReferralDiscount(school.id, referral.id, { amount: v })}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (confirm(`「${referral.name || "この紹介割引"}」を削除しますか？`)) {
-                            removeReferralDiscount(school.id, referral.id);
-                          }
-                        }}
-                        className="rounded-lg px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
-                      >
-                        削除
-                      </button>
-                    </div>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => addReferralDiscount(school.id)}
-                  className="mt-2 w-full rounded-lg border border-dashed border-sky-400 bg-white py-2 text-sm font-semibold text-sky-700 hover:bg-sky-100"
-                >
-                  ＋ 紹介割引を追加する
-                </button>
-              </div>
+              <p className="text-xs text-slate-500">
+                大学・専門学校ごとの学生割引と紹介割引の金額は、上の「学生の通っている学校」「紹介の種類」の一覧で入力します。
+              </p>
 
               <TextField
                 label="注釈（任意・学生割引・紹介割引まとめて1つ、生徒画面のカード下に表示されます）"
@@ -678,5 +594,77 @@ function TextField({
         className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
       />
     </label>
+  );
+}
+
+function NamedDiscountList({
+  title,
+  description,
+  nameLabel,
+  addLabel,
+  items,
+  schools,
+  discountOf,
+  onAdd,
+  onRename,
+  onRemove,
+  onDiscount,
+}: {
+  title: string;
+  description: string;
+  nameLabel: string;
+  addLabel: string;
+  items: { id: string; name: string }[];
+  schools: School[];
+  discountOf: (school: School, id: string) => number;
+  onAdd: () => void;
+  onRename: (id: string, name: string) => void;
+  onRemove: (id: string) => void;
+  onDiscount: (schoolId: string, id: string, amount: number) => void;
+}) {
+  return (
+    <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+      <h2 className="font-bold text-slate-900">{title}</h2>
+      <p className="mt-1 text-xs text-slate-500">{description}</p>
+      {items.length === 0 && <p className="mt-3 text-xs text-slate-500">まだ登録されていません。</p>}
+      <div className="mt-3 flex flex-col gap-3">
+        {items.map((item) => (
+          <div key={item.id} className="rounded-xl bg-slate-50 p-3 ring-1 ring-slate-200">
+            <div className="flex items-end gap-2">
+              <TextField label={nameLabel} value={item.name} onChange={(v) => onRename(item.id, v)} />
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`「${item.name || "この項目"}」を削除しますか？各教習所の割引額も消えます。`)) {
+                    onRemove(item.id);
+                  }
+                }}
+                className="rounded-lg px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+              >
+                削除
+              </button>
+            </div>
+            <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {schools.map((school) => (
+                <NumberField
+                  key={school.id}
+                  label={`割引額：${school.name || "（校名未設定）"}`}
+                  unit="円"
+                  value={discountOf(school, item.id)}
+                  onChange={(v) => onDiscount(school.id, item.id, v)}
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={onAdd}
+        className="mt-3 w-full rounded-lg border border-dashed border-slate-300 bg-white py-2 text-sm font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700"
+      >
+        {addLabel}
+      </button>
+    </section>
   );
 }

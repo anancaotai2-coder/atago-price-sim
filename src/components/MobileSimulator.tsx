@@ -7,7 +7,6 @@ import {
   PATTERN_LABELS,
   PatternId,
   PriceData,
-  School,
   GUARANTEE_COVERAGE,
   SafetyPackChoice,
   StudentInfo,
@@ -26,7 +25,7 @@ interface Answers {
   studentCategory: StudentCategory | null;
   studentSchoolId: string | null;
   hasReferral: boolean | null;
-  referralName: string | null;
+  referralTypeId: string | null;
   pattern: PatternId | null;
   night: boolean | null;
   safetyPack: boolean | null;
@@ -39,7 +38,7 @@ const EMPTY_ANSWERS: Answers = {
   studentCategory: null,
   studentSchoolId: null,
   hasReferral: null,
-  referralName: null,
+  referralTypeId: null,
   pattern: null,
   night: null,
   safetyPack: null,
@@ -97,21 +96,8 @@ interface Question {
   extra?: React.ReactNode;
 }
 
-// 紹介割引は学校ごとに自由に名前を付けて登録する仕組みなので、全校の紹介名を重複なしで集めて選択肢にする。
-// 生徒が選んだ名前と同じ名前の紹介割引を持つ学校だけに割引が付く。
-function collectReferralNames(schools: School[]): string[] {
-  const names = schools.flatMap((s) => s.referralDiscounts.map((r) => r.name.trim()).filter(Boolean));
-  return [...new Set(names)];
-}
-
-function findReferralId(school: School, name: string | null): string | null {
-  if (!name) return null;
-  return school.referralDiscounts.find((r) => r.name.trim() === name)?.id ?? null;
-}
-
 function buildQuestions(data: PriceData): Question[] {
-  const referralNames = collectReferralNames(data.schools);
-  const hasReferralChoices = referralNames.length > 0;
+  const hasReferralChoices = data.referralTypes.length > 0;
   const target = data.schools.find((s) => s.isTarget);
   return [
     {
@@ -159,7 +145,7 @@ function buildQuestions(data: PriceData): Question[] {
       key: "hasReferral",
       title: "紹介者はいらっしゃいますか？",
       summaryLabel: "紹介",
-      // 紹介割引がどの学校にも登録されていなければ聞かない。
+      // 紹介の種類が1つも登録されていなければ聞かない。
       when: () => hasReferralChoices,
       options: [
         { value: true, label: "はい" },
@@ -167,11 +153,11 @@ function buildQuestions(data: PriceData): Question[] {
       ],
     },
     {
-      key: "referralName",
+      key: "referralTypeId",
       title: "どなたからの紹介ですか？",
       summaryLabel: "紹介の種類",
       when: (a) => hasReferralChoices && a.hasReferral === true,
-      options: referralNames.map((name) => ({ value: name, label: name })),
+      options: data.referralTypes.map((r) => ({ value: r.id, label: r.name || "（名称未設定）" })),
     },
     {
       key: "pattern",
@@ -493,7 +479,9 @@ function Result({
 
   const rows = useMemo(() => {
     const safetyPack = safetyPackOf(answers, data);
-    const referralName = answers.hasReferral ? answers.referralName : null;
+    const referral = answers.hasReferral
+      ? data.referralTypes.find((r) => r.id === answers.referralTypeId) ?? null
+      : null;
     const student = studentInfoOf(answers, data);
     return data.schools
       .map((school) => ({
@@ -506,7 +494,7 @@ function Result({
           answers.night ?? false,
           safetyPack,
           data.anxietyScenario,
-          findReferralId(school, referralName),
+          referral,
           student
         ),
       }))

@@ -7,6 +7,7 @@ import {
   SchoolCampaign,
   defaultApplicability,
   defaultGuaranteeTiers,
+  defaultReferralTypes,
 } from "./pricing";
 
 type LegacyCampaign = Omit<SchoolCampaign, "id" | "enabled" | "applicability">;
@@ -44,7 +45,7 @@ const SEED_DATA: PriceData = {
         discountNote: "",
       },
       campaigns: [],
-      referralDiscounts: [],
+      referralTypeDiscounts: {},
       studentSchoolDiscounts: {},
     },
     {
@@ -74,7 +75,7 @@ const SEED_DATA: PriceData = {
         discountNote: "",
       },
       campaigns: [],
-      referralDiscounts: [],
+      referralTypeDiscounts: {},
       studentSchoolDiscounts: {},
     },
     {
@@ -104,11 +105,12 @@ const SEED_DATA: PriceData = {
         discountNote: "",
       },
       campaigns: [],
-      referralDiscounts: [],
+      referralTypeDiscounts: {},
       studentSchoolDiscounts: {},
     },
   ],
   studentSchools: [],
+  referralTypes: defaultReferralTypes(),
   guaranteeTiers: defaultGuaranteeTiers(),
   anxietyScenario: {
     overLessonChoiceMax: 10,
@@ -174,6 +176,7 @@ function normalize(data: PriceData): PriceData {
   return {
     ...data,
     studentSchools: data.studentSchools ?? [],
+    referralTypes: data.referralTypes ?? defaultReferralTypes(),
     guaranteeTiers: data.guaranteeTiers ?? defaultGuaranteeTiers(),
     anxietyScenario: {
       ...data.anxietyScenario,
@@ -194,7 +197,8 @@ function normalize(data: PriceData): PriceData {
       return {
         ...school,
         campaigns,
-        referralDiscounts: school.referralDiscounts ?? [],
+        // 旧仕様（学校ごとに自由な名前で登録する紹介割引 referralDiscounts）は使わない。
+        referralTypeDiscounts: school.referralTypeDiscounts ?? {},
         studentSchoolDiscounts: school.studentSchoolDiscounts ?? {},
         hideName: school.hideName ?? !school.isTarget,
         pricing: {
