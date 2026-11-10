@@ -42,8 +42,11 @@ export interface SchoolPricing {
   freeSkillRetestCount: number;
   freeGraduationRetestCount: number;
   freeProvisionalWrittenRetestCount: number;
+  // 高校生・リストにない学校の学生に使う学生割引。リストの大学・専門学校を選んだ場合は学校別の割引額に置き換わる。
   studentDiscount: number;
   studentDiscountApplicability: ApplicabilityFlags;
+  // 学生は夜間料金を免除（サービス）するか。
+  studentNightFree: boolean;
   // 「基本料金」ブロック全体に対する注釈（例：表示価格は税込です、など）。
   pricingNote: string;
   // 「割引額」ブロック（学生割引＋紹介割引）全体に対する注釈。
@@ -69,6 +72,12 @@ export interface ReferralDiscount {
   amount: number;
 }
 
+// 生徒が在学している大学・専門学校。管理画面で追加し、教習所ごとに割引額を設定する。
+export interface StudentSchool {
+  id: string;
+  name: string;
+}
+
 export interface School {
   id: SchoolId;
   name: string;
@@ -78,6 +87,8 @@ export interface School {
   pricing: SchoolPricing;
   campaigns: SchoolCampaign[];
   referralDiscounts: ReferralDiscount[];
+  // 大学・専門学校ごとの学生割引額（StudentSchool.id -> 円）。未設定は0円扱い。
+  studentSchoolDiscounts: Record<string, number>;
 }
 
 export interface AnxietyScenario {
@@ -91,6 +102,7 @@ export interface AnxietyScenario {
 
 export interface PriceData {
   schools: School[];
+  studentSchools: StudentSchool[];
   anxietyScenario: AnxietyScenario;
   updatedAt: string;
 }
@@ -122,11 +134,13 @@ export function createBlankSchool(id: string): School {
       freeProvisionalWrittenRetestCount: 0,
       studentDiscount: 0,
       studentDiscountApplicability: defaultApplicability(),
+      studentNightFree: false,
       pricingNote: "",
       discountNote: "",
     },
     campaigns: [],
     referralDiscounts: [],
+    studentSchoolDiscounts: {},
   };
 }
 
@@ -146,6 +160,18 @@ export function createBlankCampaign(id: string): SchoolCampaign {
 export interface BreakdownItem {
   label: string;
   amount: number;
+  // 料金がかからない「サービス」項目（例：学生の夜間料金）。金額は0円で、表示だけ「サービス」にする。
+  free?: boolean;
+}
+
+// 学生の詳細。大学・専門学校をリストから選んだ場合だけ schoolId が入る（高校生・その他の学校は null）。
+export interface StudentInfo {
+  schoolId: string | null;
+  schoolName: string | null;
+}
+
+export function isStudentNightFree(school: School, attribute: Attribute): boolean {
+  return attribute === "student" && school.pricing.studentNightFree && school.pricing.nightSurcharge > 0;
 }
 
 export interface PatternResult {
@@ -168,7 +194,8 @@ export function calcSchoolPrice(
   night: boolean,
   safetyPack: SafetyPackChoice,
   scenario: AnxietyScenario,
-  referralDiscountId: string | null
+  referralDiscountId: string | null,
+  student: StudentInfo = { schoolId: null, schoolName: null }
 ): PatternResult {
   const p = school.pricing;
   const safetyOn = safetyPack.enabled;
@@ -217,15 +244,20 @@ export function calcSchoolPrice(
   }
 
   if (night && p.nightSurcharge) {
-    breakdown.push({ label: "夜間料金加算", amount: p.nightSurcharge });
+    if (isStudentNightFree(school, attribute)) {
+      breakdown.push({ label: "夜間料金（学生はサービス）", amount: 0, free: true });
+    } else {
+      breakdown.push({ label: "夜間料金加算", amount: p.nightSurcharge });
+    }
   }
 
-  if (
-    attribute === "student" &&
-    p.studentDiscount &&
-    isApplicable(p.studentDiscountApplicability, pattern, safetyOn)
-  ) {
-    breakdown.push({ label: "学生割引", amount: -p.studentDiscount });
+  if (attribute === "student" && isApplicable(p.studentDiscountApplicability, pattern, safetyOn)) {
+    // リストの大学・専門学校を選んだ場合は、学校別の割引額に置き換える。
+    const amount = student.schoolId ? school.studentSchoolDiscounts[student.schoolId] ?? 0 : p.studentDiscount;
+    if (amount) {
+      const label = student.schoolId ? `学生割引（${student.schoolName ?? ""}）` : "学生割引";
+      breakdown.push({ label, amount: -amount });
+    }
   }
 
   for (const c of activeCampaigns) {

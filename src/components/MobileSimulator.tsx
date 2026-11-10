@@ -8,7 +8,9 @@ import {
   PatternId,
   PriceData,
   School,
+  StudentInfo,
   calcSchoolPrice,
+  isStudentNightFree,
 } from "@/lib/pricing";
 
 function formatYen(amount: number): string {
@@ -19,6 +21,8 @@ function formatYen(amount: number): string {
 interface Answers {
   license: LicenseType | null;
   attribute: Attribute | null;
+  studentCategory: StudentCategory | null;
+  studentSchoolId: string | null;
   hasReferral: boolean | null;
   referralName: string | null;
   pattern: PatternId | null;
@@ -30,6 +34,8 @@ interface Answers {
 const EMPTY_ANSWERS: Answers = {
   license: null,
   attribute: null,
+  studentCategory: null,
+  studentSchoolId: null,
   hasReferral: null,
   referralName: null,
   pattern: null,
@@ -39,6 +45,20 @@ const EMPTY_ANSWERS: Answers = {
 };
 
 type AnswerKey = keyof Answers;
+
+type StudentCategory = "university" | "highschool";
+
+// 大学・専門学校の選択肢の最後に付ける「リストにない学校」。通常の学生割引を使う。
+const OTHER_SCHOOL = "other";
+
+// リストの大学・専門学校を選んだときだけ学校別の割引を使う。高校生・その他の学校・一般は null。
+function studentInfoOf(a: Answers, data: PriceData): StudentInfo {
+  if (a.attribute !== "student" || a.studentCategory !== "university" || !a.studentSchoolId) {
+    return { schoolId: null, schoolName: null };
+  }
+  const found = data.studentSchools.find((s) => s.id === a.studentSchoolId);
+  return found ? { schoolId: found.id, schoolName: found.name } : { schoolId: null, schoolName: null };
+}
 
 interface QuestionOption {
   value: string | number | boolean;
@@ -57,6 +77,8 @@ interface Question {
   grid?: boolean;
   // 前の回答によって出す・出さないが変わる質問。
   when?: (a: Answers) => boolean;
+  // 前の回答によって出す、目立たせたいお知らせ（例：学生は夜間料金がサービス）。
+  callout?: (a: Answers) => string | null;
 }
 
 // 紹介割引は学校ごとに自由に名前を付けて登録する仕組みなので、全校の紹介名を重複なしで集めて選択肢にする。
@@ -75,6 +97,7 @@ function buildQuestions(data: PriceData): Question[] {
   const { overLessonChoiceMax, assumedOverLessonCount } = data.anxietyScenario;
   const referralNames = collectReferralNames(data.schools);
   const hasReferralChoices = referralNames.length > 0;
+  const target = data.schools.find((s) => s.isTarget);
   return [
     {
       key: "license",
@@ -93,6 +116,28 @@ function buildQuestions(data: PriceData): Question[] {
       options: [
         { value: "student", label: "学生", sub: "高校生・大学生・専門学生など" },
         { value: "general", label: "一般", sub: "社会人・その他" },
+      ],
+    },
+    {
+      key: "studentCategory",
+      title: "どちらにあてはまりますか？",
+      summaryLabel: "学生区分",
+      when: (a) => a.attribute === "student",
+      options: [
+        { value: "university", label: "大学生・専門学生", sub: "短大・大学院なども含みます" },
+        { value: "highschool", label: "高校生" },
+      ],
+    },
+    {
+      key: "studentSchoolId",
+      title: "通っている学校を選んでください",
+      description: "学校によって割引額が変わります。一覧にない場合は「その他の学校」を選んでください。",
+      summaryLabel: "学校",
+      // 管理画面で学校が1つも登録されていなければ聞かない。
+      when: (a) => a.attribute === "student" && a.studentCategory === "university" && data.studentSchools.length > 0,
+      options: [
+        ...data.studentSchools.map((s) => ({ value: s.id, label: s.name || "（名称未設定）" })),
+        { value: OTHER_SCHOOL, label: "その他の学校" },
       ],
     },
     {
@@ -127,6 +172,10 @@ function buildQuestions(data: PriceData): Question[] {
       key: "night",
       title: "夜間に教習を受けたいですか？",
       summaryLabel: "夜間教習",
+      callout: (a) =>
+        target && a.attribute === "student" && isStudentNightFree(target, "student")
+          ? `学生の方は、夜間料金（${formatYen(target.pricing.nightSurcharge)}）がサービスで付きます！`
+          : null,
       options: [
         { value: true, label: "夜間も通いたい" },
         { value: false, label: "日中だけでOK" },
@@ -227,6 +276,11 @@ export default function MobileSimulator({ data }: { data: PriceData }) {
       <section key={q.key} className="animate-question-in mt-7 flex flex-col">
         <h1 className="text-[22px] font-black leading-snug text-slate-900">{q.title}</h1>
         {q.description && <p className="mt-2 text-sm leading-relaxed text-slate-500">{q.description}</p>}
+        {q.callout?.(answers) && (
+          <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
+            🌙 {q.callout(answers)}
+          </p>
+        )}
 
         <div className={q.grid ? "mt-6 grid grid-cols-4 gap-2" : "mt-6 flex flex-col gap-3"}>
           {q.options.map((o) => {
@@ -433,6 +487,7 @@ function Result({
       overLessonCount: answers.overLessonCount ?? data.anxietyScenario.assumedOverLessonCount,
     };
     const referralName = answers.hasReferral ? answers.referralName : null;
+    const student = studentInfoOf(answers, data);
     return data.schools
       .map((school) => ({
         school,
@@ -444,7 +499,8 @@ function Result({
           answers.night ?? false,
           safetyPack,
           data.anxietyScenario,
-          findReferralId(school, referralName)
+          findReferralId(school, referralName),
+          student
         ),
       }))
       .sort((a, b) => a.result.total - b.result.total || Number(b.school.isTarget) - Number(a.school.isTarget));
@@ -457,6 +513,7 @@ function Result({
   const discounts = target.result.breakdown.filter((item) => item.amount < 0);
   const charges = target.result.breakdown.filter((item) => item.amount >= 0);
   const discountTotal = -discounts.reduce((sum, item) => sum + item.amount, 0);
+  const nightFree = answers.attribute === "student" && isStudentNightFree(target.school, "student");
 
   return (
     <Shell targetName={targetName}>
@@ -510,13 +567,20 @@ function Result({
               </div>
             )}
 
+            {nightFree && (
+              <p className="mt-3 rounded-2xl bg-emerald-50/70 px-4 py-3 text-xs font-bold leading-relaxed text-emerald-700 ring-1 ring-emerald-200">
+                🌙 学生の方は夜間料金（{formatYen(target.school.pricing.nightSurcharge)}）がサービスで付きます。
+                {answers.night ? "" : "夜間に通うことになっても追加料金はかかりません。"}
+              </p>
+            )}
+
             <details className="mt-3">
               <summary className="cursor-pointer py-1 text-sm font-bold text-emerald-700">料金の内訳を見る</summary>
               <ul className="mt-2 space-y-1 text-xs text-slate-600">
                 {charges.map((item, i) => (
                   <li key={i} className="flex justify-between gap-2">
                     <span>{item.label}</span>
-                    <span className="whitespace-nowrap">+{formatYen(item.amount)}</span>
+                    <span className="whitespace-nowrap">{item.free ? "サービス" : `+${formatYen(item.amount)}`}</span>
                   </li>
                 ))}
               </ul>
@@ -569,10 +633,10 @@ function Result({
                         <summary className="cursor-pointer text-xs font-bold text-emerald-700">内訳を見る</summary>
                         <ul className="mt-1 space-y-0.5 text-xs text-slate-600">
                           {result.breakdown.map((item, j) => (
-                            <li key={j} className={`flex justify-between gap-2 ${item.amount < 0 ? "text-emerald-700" : ""}`}>
+                            <li key={j} className={`flex justify-between gap-2 ${item.amount < 0 || item.free ? "text-emerald-700" : ""}`}>
                               <span>{item.label}</span>
                               <span className="whitespace-nowrap">
-                                {item.amount < 0 ? `−${formatYen(-item.amount)}` : `+${formatYen(item.amount)}`}
+                                {item.free ? "サービス" : item.amount < 0 ? `−${formatYen(-item.amount)}` : `+${formatYen(item.amount)}`}
                               </span>
                             </li>
                           ))}

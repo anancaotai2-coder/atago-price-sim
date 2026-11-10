@@ -32,11 +32,13 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 0,
         studentDiscountApplicability: defaultApplicability(),
+        studentNightFree: true,
         pricingNote: "",
         discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
+      studentSchoolDiscounts: {},
     },
     {
       id: "school-a",
@@ -60,11 +62,13 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 1,
         studentDiscount: 10000,
         studentDiscountApplicability: defaultApplicability(),
+        studentNightFree: false,
         pricingNote: "",
         discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
+      studentSchoolDiscounts: {},
     },
     {
       id: "school-b",
@@ -88,13 +92,16 @@ const SEED_DATA: PriceData = {
         freeProvisionalWrittenRetestCount: 0,
         studentDiscount: 8000,
         studentDiscountApplicability: defaultApplicability(),
+        studentNightFree: false,
         pricingNote: "",
         discountNote: "",
       },
       campaigns: [],
       referralDiscounts: [],
+      studentSchoolDiscounts: {},
     },
   ],
+  studentSchools: [],
   anxietyScenario: {
     overLessonChoiceMax: 10,
     assumedOverLessonCount: 3,
@@ -158,6 +165,7 @@ async function saveDataToBlob(data: PriceData): Promise<void> {
 function normalize(data: PriceData): PriceData {
   return {
     ...data,
+    studentSchools: data.studentSchools ?? [],
     anxietyScenario: {
       ...data.anxietyScenario,
       overLessonChoiceMax: Math.max(
@@ -178,11 +186,14 @@ function normalize(data: PriceData): PriceData {
         ...school,
         campaigns,
         referralDiscounts: school.referralDiscounts ?? [],
+        studentSchoolDiscounts: school.studentSchoolDiscounts ?? {},
         hideName: school.hideName ?? !school.isTarget,
         pricing: {
           ...school.pricing,
           safeCourseSurcharge: school.pricing.safeCourseSurcharge ?? 0,
           studentDiscountApplicability: normalizeApplicability(school.pricing.studentDiscountApplicability),
+          // 未設定の古いデータでは、当校（あたご）だけ「学生は夜間料金サービス」をONにしておく。
+          studentNightFree: school.pricing.studentNightFree ?? school.isTarget,
           pricingNote: school.pricing.pricingNote ?? "",
           discountNote: school.pricing.discountNote ?? "",
         },

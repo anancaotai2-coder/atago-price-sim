@@ -7,7 +7,9 @@ import {
   PatternId,
   PriceData,
   SafetyPackChoice,
+  StudentInfo,
   calcSchoolPrice,
+  isStudentNightFree,
 } from "@/lib/pricing";
 
 function formatYen(amount: number): string {
@@ -19,6 +21,9 @@ const PATTERN_ORDER: PatternId[] = ["fast", "normal"];
 export default function StudentSimulator({ data }: { data: PriceData }) {
   const [pattern, setPattern] = useState<PatternId>("normal");
   const [attribute, setAttribute] = useState<Attribute>("general");
+  const [studentCategory, setStudentCategory] = useState<"university" | "highschool">("university");
+  // 空文字は「その他の学校」（通常の学生割引を使う）。
+  const [studentSchoolId, setStudentSchoolId] = useState("");
   const [night, setNight] = useState(false);
   const [safetyPackEnabled, setSafetyPackEnabled] = useState(false);
   const [overLessonCount, setOverLessonCount] = useState(data.anxietyScenario.assumedOverLessonCount);
@@ -30,13 +35,24 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     [safetyPackEnabled, overLessonCount]
   );
 
+  const student: StudentInfo = useMemo(() => {
+    const found =
+      attribute === "student" && studentCategory === "university"
+        ? data.studentSchools.find((s) => s.id === studentSchoolId)
+        : undefined;
+    return found ? { schoolId: found.id, schoolName: found.name } : { schoolId: null, schoolName: null };
+  }, [data, attribute, studentCategory, studentSchoolId]);
+
+  const target = data.schools.find((s) => s.isTarget);
+  const nightFree = !!target && attribute === "student" && isStudentNightFree(target, "student");
+
   const rows = useMemo(() => {
     const results = data.schools.map((school) => {
       const referralId = referralChoices[school.id] ?? null;
       return {
         school,
-        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referralId),
-        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referralId),
+        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referralId, student),
+        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referralId, student),
       };
     });
 
@@ -46,7 +62,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     return results
       .map((r) => ({ ...r, isCheapestAt: r.at.total === minAt, isCheapestMt: r.mt.total === minMt }))
       .sort((a, b) => Number(b.school.isTarget) - Number(a.school.isTarget));
-  }, [data, pattern, attribute, night, safetyPack, referralChoices]);
+  }, [data, pattern, attribute, night, safetyPack, referralChoices, student]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
@@ -161,6 +177,56 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
           </label>
         </div>
 
+        {attribute === "student" && (
+          <div className="mt-3 flex flex-wrap items-center gap-4">
+            <div className="flex overflow-hidden rounded-lg border border-slate-200">
+              {(
+                [
+                  ["university", "大学生・専門学生"],
+                  ["highschool", "高校生"],
+                ] as ["university" | "highschool", string][]
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setStudentCategory(value)}
+                  className={`px-4 py-2 text-sm font-medium transition ${
+                    studentCategory === value ? "bg-emerald-700 text-white" : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {studentCategory === "university" && data.studentSchools.length > 0 && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                通っている学校
+                <select
+                  value={studentSchoolId}
+                  onChange={(e) => setStudentSchoolId(e.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
+                >
+                  <option value="" disabled hidden>
+                    選択してください
+                  </option>
+                  {data.studentSchools.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name || "（名称未設定）"}
+                    </option>
+                  ))}
+                  <option value="other">その他の学校</option>
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+
+        {nightFree && (
+          <p className="mt-3 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
+            🌙 学生の方は、夜間料金（{formatYen(target!.pricing.nightSurcharge)}）がサービスで付きます！
+          </p>
+        )}
+
         {data.schools.some((s) => s.referralDiscounts.length > 0) && (
           <>
             <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">4. 紹介者はいますか？</p>
@@ -261,7 +327,7 @@ function PriceBlock({
   label: string;
   total: number;
   isCheapest: boolean;
-  breakdown: { label: string; amount: number }[];
+  breakdown: { label: string; amount: number; free?: boolean }[];
 }) {
   return (
     <div className="rounded-xl bg-white/70 p-4 ring-1 ring-slate-100">
@@ -280,7 +346,9 @@ function PriceBlock({
           {breakdown.map((item, i) => (
             <li key={i} className="flex justify-between">
               <span>{item.label}</span>
-              <span>{item.amount < 0 ? "" : "+"}{formatYen(item.amount)}</span>
+              <span className={item.free ? "font-semibold text-emerald-700" : ""}>
+                {item.free ? "サービス" : `${item.amount < 0 ? "" : "+"}${formatYen(item.amount)}`}
+              </span>
             </li>
           ))}
         </ul>

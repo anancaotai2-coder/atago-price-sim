@@ -9,6 +9,7 @@ import {
   School,
   SchoolCampaign,
   SchoolPricing,
+  StudentSchool,
   createBlankCampaign,
   createBlankReferralDiscount,
   createBlankSchool,
@@ -93,6 +94,42 @@ export default function AdminPage() {
     updateSchool(schoolId, { referralDiscounts: school.referralDiscounts.filter((r) => r.id !== discountId) });
   }
 
+  function addStudentSchool() {
+    setData((prev) =>
+      prev ? { ...prev, studentSchools: [...prev.studentSchools, { id: uid("student-school"), name: "" }] } : prev
+    );
+  }
+
+  function updateStudentSchool(id: string, patch: Partial<StudentSchool>) {
+    setData((prev) =>
+      prev ? { ...prev, studentSchools: prev.studentSchools.map((s) => (s.id === id ? { ...s, ...patch } : s)) } : prev
+    );
+  }
+
+  // 学校を消したら、各教習所に設定していたその学校の割引額も一緒に消す。
+  function removeStudentSchool(id: string) {
+    setData((prev) =>
+      prev
+        ? {
+            ...prev,
+            studentSchools: prev.studentSchools.filter((s) => s.id !== id),
+            schools: prev.schools.map((school) => {
+              const rest = { ...school.studentSchoolDiscounts };
+              delete rest[id];
+              return { ...school, studentSchoolDiscounts: rest };
+            }),
+          }
+        : prev
+    );
+  }
+
+  function updateStudentSchoolDiscount(schoolId: string, studentSchoolId: string, amount: number) {
+    const school = data!.schools.find((s) => s.id === schoolId)!;
+    updateSchool(schoolId, {
+      studentSchoolDiscounts: { ...school.studentSchoolDiscounts, [studentSchoolId]: amount },
+    });
+  }
+
   function addSchool() {
     setData((prev) => {
       if (!prev) return prev;
@@ -169,6 +206,46 @@ export default function AdminPage() {
             onChange={(v) => updateScenario({ assumedProvisionalWrittenRetestCount: v })}
           />
         </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <h2 className="font-bold text-slate-900">学生の通っている学校（大学・専門学校）</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          生徒が「学生 → 大学生・専門学生」を選んだときに出る学校の一覧です。最後に「その他の学校」が自動で付きます。
+          割引額は、下の各教習所の「割引額」欄で学校ごとに設定してください。
+        </p>
+        {data.studentSchools.length === 0 && (
+          <p className="mt-3 text-xs text-slate-500">まだ登録されていません（登録が0件の間は、学校を選ぶ質問は出ません）。</p>
+        )}
+        <div className="mt-3 flex flex-col gap-2">
+          {data.studentSchools.map((s) => (
+            <div key={s.id} className="flex items-end gap-2">
+              <TextField
+                label="学校名（例：長崎大学）"
+                value={s.name}
+                onChange={(v) => updateStudentSchool(s.id, { name: v })}
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirm(`「${s.name || "この学校"}」を削除しますか？各教習所に設定した割引額も消えます。`)) {
+                    removeStudentSchool(s.id);
+                  }
+                }}
+                className="rounded-lg px-2 py-2 text-xs font-medium text-red-600 hover:bg-red-50"
+              >
+                削除
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          onClick={addStudentSchool}
+          className="mt-3 w-full rounded-lg border border-dashed border-slate-300 bg-white py-2 text-sm font-semibold text-slate-600 hover:border-emerald-400 hover:text-emerald-700"
+        >
+          ＋ 学校を追加する
+        </button>
       </section>
 
       {data.schools.map((school) => (
@@ -251,6 +328,15 @@ export default function AdminPage() {
                 <NumberField label="短期集中コース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
                 <NumberField label="安心パック加算" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
               </div>
+              <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={school.pricing.studentNightFree}
+                  onChange={(e) => updatePricing(school.id, { studentNightFree: e.target.checked })}
+                  className="h-4 w-4 accent-emerald-700"
+                />
+                学生は夜間料金を免除する（生徒画面に「サービスで付きます」と表示）
+              </label>
               <div className="mt-2">
                 <TextField
                   label="注釈（任意・生徒画面のカード下にまとめて表示されます）"
@@ -265,13 +351,31 @@ export default function AdminPage() {
 
               <div>
                 <NumberField
-                  label="学生割引額"
+                  label="学生割引額（高校生・一覧にない学校）"
                   unit="円"
                   value={school.pricing.studentDiscount}
                   onChange={(v) => updatePricing(school.id, { studentDiscount: v })}
                 />
+                {data.studentSchools.length > 0 && (
+                  <div className="mt-3">
+                    <p className="mb-1 text-xs font-medium text-slate-500">
+                      大学・専門学校ごとの学生割引額（選んだ場合は上の学生割引の代わりにこちらを使います）
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      {data.studentSchools.map((s) => (
+                        <NumberField
+                          key={s.id}
+                          label={s.name || "（名称未設定）"}
+                          unit="円"
+                          value={school.studentSchoolDiscounts[s.id] ?? 0}
+                          onChange={(v) => updateStudentSchoolDiscount(school.id, s.id, v)}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-2">
-                  <p className="mb-1 text-xs font-medium text-slate-500">学生割引を適用する条件</p>
+                  <p className="mb-1 text-xs font-medium text-slate-500">学生割引を適用する条件（学校別の割引にも使います）</p>
                   <ApplicabilityEditor
                     value={school.pricing.studentDiscountApplicability}
                     onChange={(v) => updatePricing(school.id, { studentDiscountApplicability: v })}
