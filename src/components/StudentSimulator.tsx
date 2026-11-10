@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   Attribute,
+  GUARANTEE_COVERAGE,
   PATTERN_LABELS,
   PatternId,
   PriceData,
@@ -26,14 +27,17 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   const [studentSchoolId, setStudentSchoolId] = useState("");
   const [night, setNight] = useState(false);
   const [safetyPackEnabled, setSafetyPackEnabled] = useState(false);
-  const [overLessonCount, setOverLessonCount] = useState(data.anxietyScenario.assumedOverLessonCount);
+  // 安心保証コースの年齢区分（GuaranteeTier.id）。空文字は未選択、"over-70" は71歳以上（対象外）。
+  const [guaranteeAge, setGuaranteeAge] = useState("");
   // 紹介割引は学校ごとに内容が違うので、選択も学校ごとに独立して持つ（school.id -> 選んだ紹介割引のid）。
   const [referralChoices, setReferralChoices] = useState<Record<string, string | null>>({});
 
-  const safetyPack: SafetyPackChoice = useMemo(
-    () => ({ enabled: safetyPackEnabled, overLessonCount }),
-    [safetyPackEnabled, overLessonCount]
-  );
+  // 高校生は安心保証コースの対象外。
+  const isHighSchool = attribute === "student" && studentCategory === "highschool";
+  const safetyPack: SafetyPackChoice = useMemo(() => {
+    const tier = data.guaranteeTiers.find((t) => t.id === guaranteeAge) ?? null;
+    return { enabled: safetyPackEnabled && !isHighSchool && !!tier, tier };
+  }, [data, safetyPackEnabled, isHighSchool, guaranteeAge]);
 
   const student: StudentInfo = useMemo(() => {
     const found =
@@ -99,49 +103,73 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
           })}
         </div>
 
-        <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">2. 安心パックをつけますか？</p>
+        <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">2. 安心保証コースをつけますか？</p>
         <p className="mb-3 -mt-2 text-xs text-slate-500">
-          技能教習が延びたり、検定に落ちてしまった場合の追加費用も見込んだ金額で比較したいときに選んでください。
+          技能教習が延びたり、検定に落ちてしまっても追加料金がかからないコースです。料金は年齢によって変わります（高校生は対象外です）。
         </p>
-        <div className="flex flex-wrap items-center gap-4">
-          <div className="flex overflow-hidden rounded-lg border border-slate-200">
-            {(
-              [
-                [false, "つけない"],
-                [true, "つける"],
-              ] as [boolean, string][]
-            ).map(([value, label]) => (
-              <button
-                key={String(value)}
-                onClick={() => setSafetyPackEnabled(value)}
-                className={`px-4 py-2 text-sm font-medium transition ${
-                  safetyPackEnabled === value
-                    ? "bg-emerald-700 text-white"
-                    : "bg-white text-slate-600 hover:bg-slate-50"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
-          {safetyPackEnabled && (
-            <label className="flex items-center gap-2 text-sm text-slate-600">
-              技能教習は何時限まで追加を見込みますか？
-              <select
-                value={overLessonCount}
-                onChange={(e) => setOverLessonCount(Number(e.target.value))}
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
-              >
-                {Array.from({ length: data.anxietyScenario.overLessonChoiceMax + 1 }, (_, i) => i).map((n) => (
-                  <option key={n} value={n}>
-                    {n}時限
-                  </option>
-                ))}
-              </select>
-            </label>
-          )}
+        <div className="mb-3 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
+          <p className="rounded-lg bg-emerald-50 px-3 py-2 text-emerald-800 ring-1 ring-emerald-100">
+            <span className="font-semibold">保証の対象：</span>
+            {GUARANTEE_COVERAGE.covered.join("、")}
+          </p>
+          <p className="rounded-lg bg-slate-50 px-3 py-2 text-slate-600 ring-1 ring-slate-200">
+            <span className="font-semibold">保証の対象外：</span>
+            {GUARANTEE_COVERAGE.notCovered.join("、")}
+          </p>
         </div>
+        {isHighSchool ? (
+          <p className="rounded-lg bg-slate-50 px-4 py-2 text-sm text-slate-500 ring-1 ring-slate-200">
+            高校生の方は安心保証コースの対象外のため、保証なしで計算しています。
+          </p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex overflow-hidden rounded-lg border border-slate-200">
+              {(
+                [
+                  [false, "つけない"],
+                  [true, "つける"],
+                ] as [boolean, string][]
+              ).map(([value, label]) => (
+                <button
+                  key={String(value)}
+                  onClick={() => setSafetyPackEnabled(value)}
+                  className={`px-4 py-2 text-sm font-medium transition ${
+                    safetyPackEnabled === value
+                      ? "bg-emerald-700 text-white"
+                      : "bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            {safetyPackEnabled && (
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                入校時の年齢
+                <select
+                  value={guaranteeAge}
+                  onChange={(e) => setGuaranteeAge(e.target.value)}
+                  className="rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 focus:border-emerald-600 focus:outline-none"
+                >
+                  <option value="" disabled hidden>
+                    選択してください
+                  </option>
+                  {data.guaranteeTiers.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.label}：{formatYen(t.price)}
+                      {t.atOnly ? "（AT限定）" : ""}
+                    </option>
+                  ))}
+                  <option value="over-70">71歳以上（対象外）</option>
+                </select>
+              </label>
+            )}
+          </div>
+        )}
+        {!isHighSchool && safetyPackEnabled && guaranteeAge === "over-70" && (
+          <p className="mt-2 text-xs text-slate-500">71歳以上の方は安心保証コースの対象外のため、保証なしで計算しています。</p>
+        )}
 
         <p className="mb-3 mt-6 text-sm font-semibold text-slate-700">3. あなたについて教えてください</p>
         <div className="flex flex-wrap gap-4">

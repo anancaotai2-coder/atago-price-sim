@@ -1,6 +1,13 @@
 import { promises as fs } from "fs";
 import path from "path";
-import { ApplicabilityFlags, PriceData, School, SchoolCampaign, defaultApplicability } from "./pricing";
+import {
+  ApplicabilityFlags,
+  PriceData,
+  School,
+  SchoolCampaign,
+  defaultApplicability,
+  defaultGuaranteeTiers,
+} from "./pricing";
 
 type LegacyCampaign = Omit<SchoolCampaign, "id" | "enabled" | "applicability">;
 
@@ -102,6 +109,7 @@ const SEED_DATA: PriceData = {
     },
   ],
   studentSchools: [],
+  guaranteeTiers: defaultGuaranteeTiers(),
   anxietyScenario: {
     overLessonChoiceMax: 10,
     assumedOverLessonCount: 3,
@@ -161,11 +169,12 @@ async function saveDataToBlob(data: PriceData): Promise<void> {
 
 // 古い保存データに新しいフィールドが無い場合の後方互換用の補完。
 // キャンペーン・学割の適用先が未設定の場合は defaultApplicability()（一般プランのみ）になる。
-// これは「最短・安心パックには適用しない」という仕様変更の意図どおりの挙動。
+// これは「最短・安心保証コースには適用しない」という仕様変更の意図どおりの挙動。
 function normalize(data: PriceData): PriceData {
   return {
     ...data,
     studentSchools: data.studentSchools ?? [],
+    guaranteeTiers: data.guaranteeTiers ?? defaultGuaranteeTiers(),
     anxietyScenario: {
       ...data.anxietyScenario,
       overLessonChoiceMax: Math.max(

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import {
   AnxietyScenario,
   ApplicabilityFlags,
+  GuaranteeTier,
   PriceData,
   ReferralDiscount,
   School,
@@ -94,6 +95,12 @@ export default function AdminPage() {
     updateSchool(schoolId, { referralDiscounts: school.referralDiscounts.filter((r) => r.id !== discountId) });
   }
 
+  function updateGuaranteeTier(id: string, patch: Partial<GuaranteeTier>) {
+    setData((prev) =>
+      prev ? { ...prev, guaranteeTiers: prev.guaranteeTiers.map((t) => (t.id === id ? { ...t, ...patch } : t)) } : prev
+    );
+  }
+
   function addStudentSchool() {
     setData((prev) =>
       prev ? { ...prev, studentSchools: [...prev.studentSchools, { id: uid("student-school"), name: "" }] } : prev
@@ -170,19 +177,39 @@ export default function AdminPage() {
       </header>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <h2 className="font-bold text-slate-900">安心パックの設定（全校共通）</h2>
+        <h2 className="font-bold text-slate-900">安心保証コース（当校）</h2>
         <p className="mt-1 text-xs text-slate-500">
-          生徒が「安心パックをつける」を選んだときの料金計算に使います。技能オーバーの追加時限数は生徒自身が選べます（下の初期値・選択肢上限を使用）。再受験の想定回数はここで固定して計算します。
+          生徒が「安心保証コースをつける」を選び、年齢を答えたときの当校の料金です。高校生・71歳以上には出ません。
+          「AT限定」の区分をMTの生徒が選んだ場合は、保証なしで計算します。
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {data.guaranteeTiers.map((tier) => (
+            <div key={tier.id} className="grid grid-cols-[1fr_1fr_auto] items-end gap-2">
+              <TextField label="年齢区分" value={tier.label} onChange={(v) => updateGuaranteeTier(tier.id, { label: v })} />
+              <NumberField label="料金" unit="円" value={tier.price} onChange={(v) => updateGuaranteeTier(tier.id, { price: v })} />
+              <label className="flex items-center gap-1.5 pb-2 text-xs text-slate-600">
+                <input
+                  type="checkbox"
+                  checked={tier.atOnly}
+                  onChange={(e) => updateGuaranteeTier(tier.id, { atOnly: e.target.checked })}
+                  className="h-3.5 w-3.5 accent-emerald-700"
+                />
+                AT限定
+              </label>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
+        <h2 className="font-bold text-slate-900">近隣校の追加費用の見込み（全校共通）</h2>
+        <p className="mt-1 text-xs text-slate-500">
+          生徒が「安心保証コースをつける」を選んだとき、近隣校の料金は「保証コース加算＋下の想定回数分の追加費用」で計算します。
+          当校は仮免学科再受験（保証対象外）の想定回数だけを使います。
         </p>
         <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-4">
           <NumberField
-            label="技能オーバー：選べる上限"
-            unit="時限"
-            value={data.anxietyScenario.overLessonChoiceMax}
-            onChange={(v) => updateScenario({ overLessonChoiceMax: v })}
-          />
-          <NumberField
-            label="技能オーバー：初期選択値"
+            label="想定：技能オーバー"
             unit="時限"
             value={data.anxietyScenario.assumedOverLessonCount}
             onChange={(v) => updateScenario({ assumedOverLessonCount: v })}
@@ -326,7 +353,9 @@ export default function AdminPage() {
                 <NumberField label="通常料金 MT" unit="円" value={school.pricing.baseMT} onChange={(v) => updatePricing(school.id, { baseMT: v })} />
                 <NumberField label="夜間料金加算" unit="円" value={school.pricing.nightSurcharge} onChange={(v) => updatePricing(school.id, { nightSurcharge: v })} />
                 <NumberField label="短期集中コース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
-                <NumberField label="安心パック加算" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
+                {!school.isTarget && (
+                  <NumberField label="保証コース加算（比較用）" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
+                )}
               </div>
               <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
                 <input
@@ -444,7 +473,7 @@ export default function AdminPage() {
 
             <div>
               <p className="mb-2 text-sm font-semibold text-slate-700">
-                標準で含まれる無料回数（安心パックの計算に使用）
+                標準で含まれる無料回数（安心保証コースをつけた場合の見込みに使用）
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <NumberField label="技能オーバー無料" unit="回" value={school.pricing.freeOverLessonCount} onChange={(v) => updatePricing(school.id, { freeOverLessonCount: v })} />
@@ -611,7 +640,7 @@ function ApplicabilityEditor({
   const options: { key: keyof ApplicabilityFlags; label: string }[] = [
     { key: "fast", label: "最短プラン" },
     { key: "normal", label: "一般プラン" },
-    { key: "safetyPack", label: "安心パック利用時" },
+    { key: "safetyPack", label: "安心保証コース利用時" },
   ];
   return (
     <div className="flex flex-wrap gap-3">

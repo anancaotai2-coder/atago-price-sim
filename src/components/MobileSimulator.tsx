@@ -8,6 +8,8 @@ import {
   PatternId,
   PriceData,
   School,
+  GUARANTEE_COVERAGE,
+  SafetyPackChoice,
   StudentInfo,
   calcSchoolPrice,
   isStudentNightFree,
@@ -28,7 +30,7 @@ interface Answers {
   pattern: PatternId | null;
   night: boolean | null;
   safetyPack: boolean | null;
-  overLessonCount: number | null;
+  guaranteeAge: string | null;
 }
 
 const EMPTY_ANSWERS: Answers = {
@@ -41,7 +43,7 @@ const EMPTY_ANSWERS: Answers = {
   pattern: null,
   night: null,
   safetyPack: null,
-  overLessonCount: null,
+  guaranteeAge: null,
 };
 
 type AnswerKey = keyof Answers;
@@ -50,6 +52,20 @@ type StudentCategory = "university" | "highschool";
 
 // 大学・専門学校の選択肢の最後に付ける「リストにない学校」。通常の学生割引を使う。
 const OTHER_SCHOOL = "other";
+
+// 安心保証コースの年齢の選択肢の最後に付ける「71歳以上（対象外）」。
+const OVER_AGE = "over-70";
+
+// 高校生は安心保証コースの対象外なので、つける／つけないの質問自体を出さない。
+function canChooseGuarantee(a: Answers): boolean {
+  return !(a.attribute === "student" && a.studentCategory === "highschool");
+}
+
+// 実際に計算へ使う安心保証コースの選択。対象外の人や71歳以上は「つけない」扱い。
+function safetyPackOf(a: Answers, data: PriceData): SafetyPackChoice {
+  const tier = data.guaranteeTiers.find((t) => t.id === a.guaranteeAge) ?? null;
+  return { enabled: canChooseGuarantee(a) && a.safetyPack === true && !!tier, tier };
+}
 
 // リストの大学・専門学校を選んだときだけ学校別の割引を使う。高校生・その他の学校・一般は null。
 function studentInfoOf(a: Answers, data: PriceData): StudentInfo {
@@ -73,12 +89,12 @@ interface Question {
   // 結果画面の「回答内容」に出す短い見出し。
   summaryLabel: string;
   options: QuestionOption[];
-  // 選択肢が多い質問（時限数など）はグリッドで並べる。
-  grid?: boolean;
   // 前の回答によって出す・出さないが変わる質問。
   when?: (a: Answers) => boolean;
   // 前の回答によって出す、目立たせたいお知らせ（例：学生は夜間料金がサービス）。
   callout?: (a: Answers) => string | null;
+  // 選択肢の上に出す補足（例：安心保証コースの保証内容）。
+  extra?: React.ReactNode;
 }
 
 // 紹介割引は学校ごとに自由に名前を付けて登録する仕組みなので、全校の紹介名を重複なしで集めて選択肢にする。
@@ -94,7 +110,6 @@ function findReferralId(school: School, name: string | null): string | null {
 }
 
 function buildQuestions(data: PriceData): Question[] {
-  const { overLessonChoiceMax, assumedOverLessonCount } = data.anxietyScenario;
   const referralNames = collectReferralNames(data.schools);
   const hasReferralChoices = referralNames.length > 0;
   const target = data.schools.find((s) => s.isTarget);
@@ -183,33 +198,41 @@ function buildQuestions(data: PriceData): Question[] {
     },
     {
       key: "safetyPack",
-      title: "追加費用も見込んで比較しますか？",
-      description:
-        "技能教習が延びたり、検定に落ちてしまった場合の追加費用（安心パック・補習料金）も含めた金額で比較できます。",
-      summaryLabel: "安心パック",
+      title: "安心保証コースをつけますか？",
+      description: "技能教習が延びたり、検定に落ちてしまっても追加料金がかからないコースです。料金は年齢によって変わります。",
+      summaryLabel: "安心保証コース",
+      when: canChooseGuarantee,
+      extra: <GuaranteeCoverage />,
       options: [
-        { value: true, label: "見込んで比較する", sub: "安心パック・補習料金を含める" },
-        { value: false, label: "見込まない" },
+        { value: true, label: "つける", sub: "次の質問で年齢を選びます" },
+        { value: false, label: "つけない" },
       ],
     },
     {
-      key: "overLessonCount",
-      title: "技能教習は何時限まで追加を見込みますか？",
-      description: `迷ったら目安の${assumedOverLessonCount}時限を選んでください。`,
-      summaryLabel: "追加時限数",
-      when: (a) => a.safetyPack === true,
-      grid: true,
-      options: Array.from({ length: overLessonChoiceMax + 1 }, (_, n) => ({
-        value: n,
-        label: `${n}`,
-        sub: n === assumedOverLessonCount ? "目安" : undefined,
-      })),
+      key: "guaranteeAge",
+      title: "入校時の年齢を教えてください",
+      description: "安心保証コースの料金は年齢によって変わります。",
+      summaryLabel: "年齢",
+      when: (a) => canChooseGuarantee(a) && a.safetyPack === true,
+      callout: (a) => {
+        const atOnly = data.guaranteeTiers.filter((t) => t.atOnly).map((t) => t.label);
+        return a.license === "MT" && atOnly.length > 0
+          ? `MT（マニュアル）の方は、${atOnly.join("・")}は安心保証コースをつけられません。`
+          : null;
+      },
+      options: [
+        ...data.guaranteeTiers.map((t) => ({
+          value: t.id,
+          label: t.label,
+          sub: `${formatYen(t.price)}${t.atOnly ? "（AT限定）" : ""}`,
+        })),
+        { value: OVER_AGE, label: "71歳以上", sub: "安心保証コースの対象外です" },
+      ],
     },
   ];
 }
 
 function optionLabel(q: Question, value: Answers[AnswerKey]): string {
-  if (q.key === "overLessonCount") return `${value}時限`;
   return q.options.find((o) => o.value === value)?.label ?? "";
 }
 
@@ -278,31 +301,18 @@ export default function MobileSimulator({ data }: { data: PriceData }) {
         {q.description && <p className="mt-2 text-sm leading-relaxed text-slate-500">{q.description}</p>}
         {q.callout?.(answers) && (
           <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 ring-1 ring-emerald-200">
-            🌙 {q.callout(answers)}
+            {q.key === "night" ? "🌙 " : "⚠️ "}
+            {q.callout(answers)}
           </p>
         )}
+        {q.extra}
 
-        <div className={q.grid ? "mt-6 grid grid-cols-4 gap-2" : "mt-6 flex flex-col gap-3"}>
+        <div className="mt-6 flex flex-col gap-3">
           {q.options.map((o) => {
             const selected = answers[q.key] === o.value;
             const tone = selected
               ? "border-emerald-600 bg-emerald-50 shadow-emerald-100"
               : "border-slate-200 bg-white active:border-emerald-300 active:bg-emerald-50";
-            if (q.grid) {
-              return (
-                <button
-                  key={String(o.value)}
-                  onClick={() => answer(q, o.value)}
-                  className={`flex aspect-square flex-col items-center justify-center rounded-2xl border-2 px-1 text-center shadow-sm transition active:scale-[0.97] ${tone}`}
-                >
-                  <span className="text-lg font-black text-slate-900">
-                    {o.label}
-                    <span className="text-xs font-medium text-slate-500">時限</span>
-                  </span>
-                  {o.sub && <span className="mt-0.5 text-[11px] font-bold text-emerald-600">{o.sub}</span>}
-                </button>
-              );
-            }
             return (
               <button
                 key={String(o.value)}
@@ -482,10 +492,7 @@ function Result({
   const license = answers.license ?? "AT";
 
   const rows = useMemo(() => {
-    const safetyPack = {
-      enabled: answers.safetyPack ?? false,
-      overLessonCount: answers.overLessonCount ?? data.anxietyScenario.assumedOverLessonCount,
-    };
+    const safetyPack = safetyPackOf(answers, data);
     const referralName = answers.hasReferral ? answers.referralName : null;
     const student = studentInfoOf(answers, data);
     return data.schools
@@ -693,5 +700,28 @@ function Notes({ notes }: { notes: string[] }) {
         <li key={i}>{note}</li>
       ))}
     </ul>
+  );
+}
+
+function GuaranteeCoverage() {
+  return (
+    <div className="mt-4 grid grid-cols-1 gap-2 text-xs leading-relaxed">
+      <div className="rounded-2xl bg-emerald-50 px-4 py-3 ring-1 ring-emerald-200">
+        <p className="font-black text-emerald-700">保証の対象</p>
+        <ul className="mt-1 space-y-0.5 text-emerald-800">
+          {GUARANTEE_COVERAGE.covered.map((t) => (
+            <li key={t}>◯ {t}</li>
+          ))}
+        </ul>
+      </div>
+      <div className="rounded-2xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200">
+        <p className="font-black text-slate-600">保証の対象外</p>
+        <ul className="mt-1 space-y-0.5 text-slate-600">
+          {GUARANTEE_COVERAGE.notCovered.map((t) => (
+            <li key={t}>✕ {t}</li>
+          ))}
+        </ul>
+      </div>
+    </div>
   );
 }

@@ -3,9 +3,9 @@ export type PatternId = "fast" | "normal";
 export type LicenseType = "AT" | "MT";
 export type Attribute = "general" | "student";
 
-// キャンペーン・学割の適用先。「最短プラン」「一般プラン」「安心パック利用時」を
-// それぞれ独立に ON/OFF できる。安心パックは最短・一般どちらにも付けられる横断オプションなので、
-// 「ベースプランが一致」しているかどうかと「安心パックの有無」の両方をこのフラグで判定する。
+// キャンペーン・学割の適用先。「最短プラン」「一般プラン」「安心保証コース利用時」を
+// それぞれ独立に ON/OFF できる。安心保証コースは最短・一般どちらにも付けられる横断オプションなので、
+// 「ベースプランが一致」しているかどうかと「安心保証コースの有無」の両方をこのフラグで判定する。
 export interface ApplicabilityFlags {
   fast: boolean;
   normal: boolean;
@@ -24,7 +24,7 @@ export function isApplicable(
 }
 
 export function defaultApplicability(): ApplicabilityFlags {
-  // 既定では「一般プラン・安心パックなし」の時だけ適用される（最短・安心パックには効かない）。
+  // 既定では「一般プラン・安心保証コースなし」の時だけ適用される（最短・安心保証コースには効かない）。
   return { fast: false, normal: true, safetyPack: false };
 }
 
@@ -91,8 +91,33 @@ export interface School {
   studentSchoolDiscounts: Record<string, number>;
 }
 
+// 当校（あたご）の安心保証コース。年齢区分ごとに料金が変わる。
+// 追加技能教習・修了検定・卒業検定は受け放題。仮免学科試験受験料・自由教習・当日キャンセル料は対象外。
+export interface GuaranteeTier {
+  id: string;
+  label: string;
+  price: number;
+  // AT（オートマ）限定の区分。MTでこの区分を選んだ場合は保証コースをつけない扱いにする。
+  atOnly: boolean;
+}
+
+export function defaultGuaranteeTiers(): GuaranteeTier[] {
+  return [
+    { id: "age-25", label: "25歳以下", price: 27500, atOnly: false },
+    { id: "age-35", label: "26〜35歳", price: 33000, atOnly: false },
+    { id: "age-45", label: "36〜45歳", price: 44000, atOnly: false },
+    { id: "age-70", label: "46〜70歳", price: 55000, atOnly: true },
+  ];
+}
+
+export const GUARANTEE_COVERAGE = {
+  covered: ["追加の技能教習が受け放題", "修了検定・卒業検定が何回でも受けられる"],
+  notCovered: ["仮免学科試験の受験料", "自由教習（自由練習）", "当日キャンセル料"],
+};
+
+// 近隣校で「安心保証コースをつける」を選んだときに見込む追加費用の想定回数。
 export interface AnxietyScenario {
-  // 安心パックの「技能教習 追加時限数」は生徒が選べる。0〜この上限までの選択肢を出す。
+  // 旧仕様（生徒が追加時限数を選ぶ）の名残り。今は使っていない。
   overLessonChoiceMax: number;
   assumedOverLessonCount: number;
   assumedSkillRetestCount: number;
@@ -103,6 +128,7 @@ export interface AnxietyScenario {
 export interface PriceData {
   schools: School[];
   studentSchools: StudentSchool[];
+  guaranteeTiers: GuaranteeTier[];
   anxietyScenario: AnxietyScenario;
   updatedAt: string;
 }
@@ -183,7 +209,13 @@ export interface PatternResult {
 
 export interface SafetyPackChoice {
   enabled: boolean;
-  overLessonCount: number;
+  // 当校の安心保証コースの年齢区分。当校はこの料金で計算し、近隣校は想定の追加費用で計算する。
+  tier: GuaranteeTier | null;
+}
+
+// MTでAT限定の年齢区分を選んだ場合は、保証コースをつけない扱いになる。
+export function isGuaranteeBlocked(safetyPack: SafetyPackChoice, license: LicenseType): boolean {
+  return safetyPack.enabled && !!safetyPack.tier?.atOnly && license === "MT";
 }
 
 export function calcSchoolPrice(
@@ -198,7 +230,8 @@ export function calcSchoolPrice(
   student: StudentInfo = { schoolId: null, schoolName: null }
 ): PatternResult {
   const p = school.pricing;
-  const safetyOn = safetyPack.enabled;
+  const blocked = isGuaranteeBlocked(safetyPack, license);
+  const safetyOn = safetyPack.enabled && !blocked;
   const activeCampaigns = school.campaigns.filter(
     (c) => c.enabled && isApplicable(c.applicability, pattern, safetyOn)
   );
@@ -213,13 +246,28 @@ export function calcSchoolPrice(
     breakdown.push({ label: "短期集中コース加算", amount: p.shortTermSurcharge });
   }
 
-  if (safetyOn) {
+  const guaranteeTier = safetyOn && school.isTarget ? safetyPack.tier : null;
+
+  if (guaranteeTier) {
+    // 当校の安心保証コース：追加技能教習・修了検定・卒業検定は受け放題なので、料金は年齢区分の定額のみ。
+    breakdown.push({ label: `安心保証コース（${guaranteeTier.label}）`, amount: guaranteeTier.price });
+
+    // 仮免学科試験の受験料は保証対象外なので、想定回数分を見込む。
+    const writtenNeeded = Math.max(
+      0,
+      scenario.assumedProvisionalWrittenRetestCount - p.freeProvisionalWrittenRetestCount
+    );
+    if (writtenNeeded > 0) {
+      breakdown.push({ label: `仮免学科再受験 ${writtenNeeded}回分（保証対象外）`, amount: writtenNeeded * p.provisionalWrittenRetestFee });
+    }
+  } else if (safetyOn) {
+    // 近隣校：保証コースの加算額＋想定の追加教習・再検定費用で見込む。
     if (p.safeCourseSurcharge) {
-      breakdown.push({ label: "安心パック加算", amount: p.safeCourseSurcharge });
+      breakdown.push({ label: "保証コース加算", amount: p.safeCourseSurcharge });
     }
 
     const freeOver = p.freeOverLessonCount + couponCount;
-    const overNeeded = Math.max(0, safetyPack.overLessonCount - freeOver);
+    const overNeeded = Math.max(0, scenario.assumedOverLessonCount - freeOver);
     if (overNeeded > 0) {
       breakdown.push({ label: `技能オーバー教習 ${overNeeded}回分`, amount: overNeeded * p.overLessonFee });
     }
@@ -277,6 +325,12 @@ export function calcSchoolPrice(
 
   // 今の選択で実際に料金へ反映されているブロックの注釈だけを集める。
   const notes: string[] = [];
+  if (blocked && school.isTarget) {
+    notes.push(`MT（マニュアル）は${safetyPack.tier?.label ?? ""}の安心保証コースをつけられないため、保証なしで計算しています。`);
+  }
+  if (guaranteeTier) {
+    notes.push(`安心保証コースの対象外：${GUARANTEE_COVERAGE.notCovered.join("、")}`);
+  }
   if (p.pricingNote) notes.push(p.pricingNote);
   if (p.discountNote) notes.push(p.discountNote);
   for (const c of activeCampaigns) {
