@@ -170,8 +170,8 @@ async function saveDataToBlob(data: PriceData): Promise<void> {
 }
 
 // 古い保存データに新しいフィールドが無い場合の後方互換用の補完。
-// キャンペーン・学割の適用先が未設定の場合は defaultApplicability()（一般プランのみ）になる。
-// これは「最短・安心保証コースには適用しない」という仕様変更の意図どおりの挙動。
+// キャンペーン・学割の適用先が未設定の場合は defaultApplicability()（スピードコースなしのみ）になる。
+// これは「スピードコース・安心保証コースには適用しない」という仕様変更の意図どおりの挙動。
 function normalize(data: PriceData): PriceData {
   return {
     ...data,

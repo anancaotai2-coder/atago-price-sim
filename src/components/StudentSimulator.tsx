@@ -5,6 +5,7 @@ import {
   Attribute,
   GUARANTEE_COVERAGE,
   PATTERN_LABELS,
+  SPEED_COURSE_DESCRIPTION,
   PatternId,
   PriceData,
   SafetyPackChoice,
@@ -81,7 +82,8 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
       </header>
 
       <section className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200">
-        <p className="mb-3 text-sm font-semibold text-slate-700">1. 通い方を選ぶ</p>
+        <p className="mb-3 text-sm font-semibold text-slate-700">1. スピードコースをつけますか？</p>
+        <p className="mb-3 -mt-2 text-xs text-slate-500">{SPEED_COURSE_DESCRIPTION}</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {PATTERN_ORDER.map((id) => {
             const label = PATTERN_LABELS[id];

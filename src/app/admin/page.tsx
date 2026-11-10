@@ -324,7 +324,7 @@ export default function AdminPage() {
                 <NumberField label="通常料金 AT" unit="円" value={school.pricing.baseAT} onChange={(v) => updatePricing(school.id, { baseAT: v })} />
                 <NumberField label="通常料金 MT" unit="円" value={school.pricing.baseMT} onChange={(v) => updatePricing(school.id, { baseMT: v })} />
                 <NumberField label="夜間料金加算" unit="円" value={school.pricing.nightSurcharge} onChange={(v) => updatePricing(school.id, { nightSurcharge: v })} />
-                <NumberField label="短期集中コース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
+                <NumberField label="スピードコース加算" unit="円" value={school.pricing.shortTermSurcharge} onChange={(v) => updatePricing(school.id, { shortTermSurcharge: v })} />
                 {!school.isTarget && (
                   <NumberField label="保証コース加算（比較用）" unit="円" value={school.pricing.safeCourseSurcharge ?? 0} onChange={(v) => updatePricing(school.id, { safeCourseSurcharge: v })} />
                 )}
@@ -554,8 +554,8 @@ function ApplicabilityEditor({
   onChange: (v: ApplicabilityFlags) => void;
 }) {
   const options: { key: keyof ApplicabilityFlags; label: string }[] = [
-    { key: "fast", label: "最短プラン" },
-    { key: "normal", label: "一般プラン" },
+    { key: "fast", label: "スピードコースあり" },
+    { key: "normal", label: "スピードコースなし" },
     { key: "safetyPack", label: "安心保証コース利用時" },
   ];
   return (

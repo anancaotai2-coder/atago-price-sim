@@ -5,6 +5,7 @@ import {
   Attribute,
   LicenseType,
   PATTERN_LABELS,
+  SPEED_COURSE_DESCRIPTION,
   PatternId,
   PriceData,
   GUARANTEE_COVERAGE,
@@ -161,8 +162,9 @@ function buildQuestions(data: PriceData): Question[] {
     },
     {
       key: "pattern",
-      title: "どのように通いたいですか？",
-      summaryLabel: "通い方",
+      title: "スピードコースをつけますか？",
+      description: SPEED_COURSE_DESCRIPTION,
+      summaryLabel: "スピードコース",
       options: (["fast", "normal"] as PatternId[]).map((id) => ({
         value: id,
         label: PATTERN_LABELS[id].title,

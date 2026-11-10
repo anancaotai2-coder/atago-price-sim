@@ -3,8 +3,8 @@ export type PatternId = "fast" | "normal";
 export type LicenseType = "AT" | "MT";
 export type Attribute = "general" | "student";
 
-// キャンペーン・学割の適用先。「最短プラン」「一般プラン」「安心保証コース利用時」を
-// それぞれ独立に ON/OFF できる。安心保証コースは最短・一般どちらにも付けられる横断オプションなので、
+// キャンペーン・学割の適用先。「スピードコースあり」「スピードコースなし」「安心保証コース利用時」を
+// それぞれ独立に ON/OFF できる。安心保証コースはスピードコースの有無どちらにも付けられる横断オプションなので、
 // 「ベースプランが一致」しているかどうかと「安心保証コースの有無」の両方をこのフラグで判定する。
 export interface ApplicabilityFlags {
   fast: boolean;
@@ -24,7 +24,7 @@ export function isApplicable(
 }
 
 export function defaultApplicability(): ApplicabilityFlags {
-  // 既定では「一般プラン・安心保証コースなし」の時だけ適用される（最短・安心保証コースには効かない）。
+  // 既定では「スピードコースなし・安心保証コースなし」の時だけ適用される（スピードコース・安心保証コースには効かない）。
   return { fast: false, normal: true, safetyPack: false };
 }
 
@@ -247,7 +247,7 @@ export function calcSchoolPrice(
   breakdown.push({ label: "基本料金", amount: base });
 
   if (pattern === "fast" && p.shortTermSurcharge) {
-    breakdown.push({ label: "短期集中コース加算", amount: p.shortTermSurcharge });
+    breakdown.push({ label: "スピードコース加算", amount: p.shortTermSurcharge });
   }
 
   const guaranteeTier = safetyOn && school.isTarget ? safetyPack.tier : null;
@@ -344,7 +344,10 @@ export function calcSchoolPrice(
   return { license, total, breakdown, notes };
 }
 
+// スピードコース：優先的に予約が取れるため、最短3週間程度での卒業が見込める。
+export const SPEED_COURSE_DESCRIPTION = "スピードコースは優先的に予約が取れるため、最短3週間程度での卒業が見込めます。";
+
 export const PATTERN_LABELS: Record<PatternId, { title: string; subtitle: string }> = {
-  fast: { title: "最短で取りたい人", subtitle: "短期集中コースで一気に卒業したいタイプ" },
-  normal: { title: "一般的に通いたい人", subtitle: "順調に進んだ場合の標準的な通い方" },
+  fast: { title: "つける", subtitle: "優先的に予約が取れ、最短3週間程度で卒業が見込めます" },
+  normal: { title: "つけない", subtitle: "通常の予約で、自分のペースで通います" },
 };
