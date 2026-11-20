@@ -212,7 +212,7 @@ export function createBlankCampaign(id: string): SchoolCampaign {
 export interface BreakdownItem {
   label: string;
   amount: number;
-  // 料金がかからない「サービス」項目（例：学生の夜間料金）。金額は0円で、表示だけ「サービス」にする。
+  // 料金がかからない「無料」項目（例：学生の夜間料金）。金額は0円で、表示だけ「無料」にする。
   free?: boolean;
 }
 
@@ -259,7 +259,7 @@ export function calcSchoolPrice(
   const p = school.pricing;
   const blocked = isGuaranteeBlocked(safetyPack, license);
   const safetyOn = safetyPack.enabled && !blocked;
-  // 紹介コードの固定料金は当校だけに適用する。適用中は学生割引・キャンペーン・紹介割引・学生の夜間サービスを併用しない。
+  // 紹介コードの固定料金は当校だけに適用する。適用中は学生割引・キャンペーン・紹介割引を併用しない（学生の夜間料金無料はそのまま適用する）。
   const fixedCode = school.isTarget ? referralCode : null;
   const activeCampaigns = fixedCode
     ? []
@@ -326,8 +326,8 @@ export function calcSchoolPrice(
   }
 
   if (night && p.nightSurcharge) {
-    if (!fixedCode && isStudentNightFree(school, attribute)) {
-      breakdown.push({ label: "夜間料金（学生はサービス）", amount: 0, free: true });
+    if (isStudentNightFree(school, attribute)) {
+      breakdown.push({ label: "夜間料金（学生は無料）", amount: 0, free: true });
     } else {
       breakdown.push({ label: "夜間料金加算", amount: p.nightSurcharge });
     }

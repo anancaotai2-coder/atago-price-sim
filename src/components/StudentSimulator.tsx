@@ -55,8 +55,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   }, [data, attribute, studentCategory, studentSchoolId]);
 
   const target = data.schools.find((s) => s.isTarget);
-  // 紹介コードの固定料金は学生の夜間サービスと併用しない。
-  const nightFree = !referralCode && !!target && attribute === "student" && isStudentNightFree(target, "student");
+  const nightFree = !!target && attribute === "student" && isStudentNightFree(target, "student");
 
   const rows = useMemo(() => {
     const results = data.schools.map((school) => {
@@ -211,6 +210,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
               className="h-4 w-4 accent-emerald-700"
             />
             夜間コースを希望する
+            {nightFree && <span className="font-semibold text-emerald-700">（学生は無料です）</span>}
           </label>
         </div>
 
@@ -260,7 +260,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
 
         {nightFree && (
           <p className="mt-3 rounded-lg bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 ring-1 ring-emerald-200">
-            🌙 学生の方は、夜間料金（{formatYen(target!.pricing.nightSurcharge)}）がサービスで付きます！
+            🌙 学生は夜間料金（{formatYen(target!.pricing.nightSurcharge)}）が無料です！
           </p>
         )}
 
@@ -393,7 +393,7 @@ function PriceBlock({
             <li key={i} className="flex justify-between">
               <span>{item.label}</span>
               <span className={item.free ? "font-semibold text-emerald-700" : ""}>
-                {item.free ? "サービス" : `${item.amount < 0 ? "" : "+"}${formatYen(item.amount)}`}
+                {item.free ? "無料" : `${item.amount < 0 ? "" : "+"}${formatYen(item.amount)}`}
               </span>
             </li>
           ))}

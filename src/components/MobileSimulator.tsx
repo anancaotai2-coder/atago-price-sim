@@ -95,6 +95,8 @@ interface QuestionOption {
   value: string | number | boolean;
   label: string;
   sub?: string;
+  // 前の回答によって変わる補足（例：学生は夜間料金が無料）。sub より優先する。
+  subFor?: (a: Answers) => string | undefined;
 }
 
 interface Question {
@@ -106,7 +108,7 @@ interface Question {
   options: QuestionOption[];
   // 前の回答によって出す・出さないが変わる質問。
   when?: (a: Answers) => boolean;
-  // 前の回答によって出す、目立たせたいお知らせ（例：学生は夜間料金がサービス）。
+  // 前の回答によって出す、目立たせたいお知らせ（例：学生は夜間料金が無料）。
   callout?: (a: Answers) => string | null;
   // 選択肢の上に出す補足（例：安心保証コースの保証内容）。
   extra?: React.ReactNode;
@@ -209,10 +211,15 @@ function buildQuestions(data: PriceData): Question[] {
       summaryLabel: "夜間教習",
       callout: (a) =>
         target && a.attribute === "student" && isStudentNightFree(target, "student")
-          ? `学生の方は、夜間料金（${formatYen(target.pricing.nightSurcharge)}）がサービスで付きます！`
+          ? `学生は夜間料金（${formatYen(target.pricing.nightSurcharge)}）が無料です！`
           : null,
       options: [
-        { value: true, label: "夜間も通いたい" },
+        {
+          value: true,
+          label: "夜間も通いたい",
+          subFor: (a) =>
+            target && a.attribute === "student" && isStudentNightFree(target, "student") ? "学生は無料です" : undefined,
+        },
         { value: false, label: "日中だけでOK" },
       ],
     },
@@ -346,7 +353,11 @@ export default function MobileSimulator({ data }: { data: PriceData }) {
               >
                 <span className="flex-1">
                   <span className="block text-base font-bold text-slate-900">{o.label}</span>
-                  {o.sub && <span className="mt-0.5 block text-xs text-slate-500">{o.sub}</span>}
+                  {(o.subFor?.(answers) ?? o.sub) && (
+                    <span className={`mt-0.5 block text-xs ${o.subFor?.(answers) ? "font-bold text-emerald-700" : "text-slate-500"}`}>
+                      {o.subFor?.(answers) ?? o.sub}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border-2 text-xs font-black ${
@@ -550,8 +561,7 @@ function Result({
   const charges = target.result.breakdown.filter((item) => item.amount >= 0);
   const discountTotal = -discounts.reduce((sum, item) => sum + item.amount, 0);
   const fixedCode = referralCodeOf(answers);
-  // 紹介コードの固定料金は学生の夜間サービスと併用しない。
-  const nightFree = !fixedCode && answers.attribute === "student" && isStudentNightFree(target.school, "student");
+  const nightFree = answers.attribute === "student" && isStudentNightFree(target.school, "student");
 
   return (
     <Shell targetName={targetName}>
@@ -613,7 +623,7 @@ function Result({
 
             {nightFree && (
               <p className="mt-3 rounded-2xl bg-emerald-50/70 px-4 py-3 text-xs font-bold leading-relaxed text-emerald-700 ring-1 ring-emerald-200">
-                🌙 学生の方は夜間料金（{formatYen(target.school.pricing.nightSurcharge)}）がサービスで付きます。
+                🌙 学生は夜間料金（{formatYen(target.school.pricing.nightSurcharge)}）が無料です。
                 {answers.night ? "" : "夜間に通うことになっても追加料金はかかりません。"}
               </p>
             )}
@@ -624,7 +634,7 @@ function Result({
                 {charges.map((item, i) => (
                   <li key={i} className="flex justify-between gap-2">
                     <span>{item.label}</span>
-                    <span className="whitespace-nowrap">{item.free ? "サービス" : `+${formatYen(item.amount)}`}</span>
+                    <span className="whitespace-nowrap">{item.free ? "無料" : `+${formatYen(item.amount)}`}</span>
                   </li>
                 ))}
               </ul>
@@ -680,7 +690,7 @@ function Result({
                             <li key={j} className={`flex justify-between gap-2 ${item.amount < 0 || item.free ? "text-emerald-700" : ""}`}>
                               <span>{item.label}</span>
                               <span className="whitespace-nowrap">
-                                {item.free ? "サービス" : item.amount < 0 ? `−${formatYen(-item.amount)}` : `+${formatYen(item.amount)}`}
+                                {item.free ? "無料" : item.amount < 0 ? `−${formatYen(-item.amount)}` : `+${formatYen(item.amount)}`}
                               </span>
                             </li>
                           ))}
