@@ -11,7 +11,10 @@ import {
   GUARANTEE_COVERAGE,
   SafetyPackChoice,
   StudentInfo,
+  CLUB_REFERRAL_TYPE_ID,
+  ReferralCode,
   calcSchoolPrice,
+  findReferralCode,
   isStudentNightFree,
 } from "@/lib/pricing";
 
@@ -27,6 +30,8 @@ interface Answers {
   studentSchoolId: string | null;
   hasReferral: boolean | null;
   referralTypeId: string | null;
+  // 部活・サークルからの紹介のときに入力する紹介コード。空文字は「コードを持っていない」。
+  referralCode: string | null;
   pattern: PatternId | null;
   night: boolean | null;
   safetyPack: boolean | null;
@@ -40,6 +45,7 @@ const EMPTY_ANSWERS: Answers = {
   studentSchoolId: null,
   hasReferral: null,
   referralTypeId: null,
+  referralCode: null,
   pattern: null,
   night: null,
   safetyPack: null,
@@ -65,6 +71,15 @@ function canChooseGuarantee(a: Answers): boolean {
 function safetyPackOf(a: Answers, data: PriceData): SafetyPackChoice {
   const tier = data.guaranteeTiers.find((t) => t.id === a.guaranteeAge) ?? null;
   return { enabled: canChooseGuarantee(a) && a.safetyPack === true && !!tier, tier };
+}
+
+function isClubReferral(a: Answers): boolean {
+  return a.hasReferral === true && a.referralTypeId === CLUB_REFERRAL_TYPE_ID;
+}
+
+// 部活・サークルからの紹介で、正しいコードが入力されているときだけ固定料金のコードを返す。
+function referralCodeOf(a: Answers): ReferralCode | null {
+  return isClubReferral(a) ? findReferralCode(a.referralCode) : null;
 }
 
 // リストの大学・専門学校を選んだときだけ学校別の割引を使う。高校生・その他の学校・一般は null。
@@ -95,6 +110,10 @@ interface Question {
   callout?: (a: Answers) => string | null;
   // 選択肢の上に出す補足（例：安心保証コースの保証内容）。
   extra?: React.ReactNode;
+  // 選択肢ではなくコードを打ち込んでもらう質問。
+  input?: "code";
+  // 結果画面の「回答内容」に出す文言（選択肢から引けない質問用）。
+  summary?: (a: Answers) => string;
 }
 
 function buildQuestions(data: PriceData): Question[] {
@@ -161,6 +180,19 @@ function buildQuestions(data: PriceData): Question[] {
       options: data.referralTypes.map((r) => ({ value: r.id, label: r.name || "（名称未設定）" })),
     },
     {
+      key: "referralCode",
+      title: "コードを打ち込んでください",
+      description: "部活・サークルの方からお伝えしているコードを入力してください。コードによって料金の取り扱いが変わります。",
+      summaryLabel: "紹介コード",
+      when: (a) => hasReferralChoices && isClubReferral(a),
+      input: "code",
+      options: [],
+      summary: (a) => {
+        const code = findReferralCode(a.referralCode);
+        return code ? `${code.code}（${code.label}）` : "コードなし";
+      },
+    },
+    {
       key: "pattern",
       title: "スピードコースをつけますか？",
       description: SPEED_COURSE_DESCRIPTION,
@@ -220,8 +252,9 @@ function buildQuestions(data: PriceData): Question[] {
   ];
 }
 
-function optionLabel(q: Question, value: Answers[AnswerKey]): string {
-  return q.options.find((o) => o.value === value)?.label ?? "";
+function optionLabel(q: Question, answers: Answers): string {
+  if (q.summary) return q.summary(answers);
+  return q.options.find((o) => o.value === answers[q.key])?.label ?? "";
 }
 
 type Screen = { kind: "intro" } | { kind: "question"; key: AnswerKey } | { kind: "result" };
@@ -295,7 +328,11 @@ export default function MobileSimulator({ data }: { data: PriceData }) {
         )}
         {q.extra}
 
-        <div className="mt-6 flex flex-col gap-3">
+        {q.input === "code" && (
+          <CodeInput key={q.key} initial={answers.referralCode ?? ""} onSubmit={(code) => answer(q, code)} />
+        )}
+
+        <div className="mt-6 flex flex-col gap-3 empty:hidden">
           {q.options.map((o) => {
             const selected = answers[q.key] === o.value;
             const tone = selected
@@ -485,6 +522,7 @@ function Result({
       ? data.referralTypes.find((r) => r.id === answers.referralTypeId) ?? null
       : null;
     const student = studentInfoOf(answers, data);
+    const referralCode = referralCodeOf(answers);
     return data.schools
       .map((school) => ({
         school,
@@ -497,7 +535,8 @@ function Result({
           safetyPack,
           data.anxietyScenario,
           referral,
-          student
+          student,
+          referralCode
         ),
       }))
       .sort((a, b) => a.result.total - b.result.total || Number(b.school.isTarget) - Number(a.school.isTarget));
@@ -510,7 +549,9 @@ function Result({
   const discounts = target.result.breakdown.filter((item) => item.amount < 0);
   const charges = target.result.breakdown.filter((item) => item.amount >= 0);
   const discountTotal = -discounts.reduce((sum, item) => sum + item.amount, 0);
-  const nightFree = answers.attribute === "student" && isStudentNightFree(target.school, "student");
+  const fixedCode = referralCodeOf(answers);
+  // 紹介コードの固定料金は学生の夜間サービスと併用しない。
+  const nightFree = !fixedCode && answers.attribute === "student" && isStudentNightFree(target.school, "student");
 
   return (
     <Shell targetName={targetName}>
@@ -536,6 +577,12 @@ function Result({
               {target.result.total.toLocaleString("ja-JP")}
               <span className="ml-1 text-lg font-bold">円</span>
             </p>
+            {fixedCode && (
+              <p className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-xs font-bold leading-relaxed text-amber-800 ring-1 ring-amber-200">
+                🎉 {fixedCode.label}が適用されています（教習料金 AT {formatYen(fixedCode.fixedPriceAT)}・MT{" "}
+                {formatYen(fixedCode.fixedPriceMT)}／税込）。他のキャンペーンとは併用できません。
+              </p>
+            )}
             {isCheapest && maxSaving > 0 && (
               <p className="mt-4 inline-block rounded-full bg-emerald-600 px-4 py-1.5 text-sm font-black text-white">
                 近隣校より最大 {formatYen(maxSaving)} お得！
@@ -657,7 +704,7 @@ function Result({
                 <button onClick={() => onEdit(q.key)} className="flex w-full items-center justify-between gap-2 py-2.5 text-left text-sm">
                   <span className="text-slate-500">{q.summaryLabel}</span>
                   <span className="font-bold text-slate-900">
-                    {optionLabel(q, answers[q.key])} <span className="text-emerald-600">›</span>
+                    {optionLabel(q, answers)} <span className="text-emerald-600">›</span>
                   </span>
                 </button>
               </li>
@@ -678,6 +725,61 @@ function Result({
         </div>
       </div>
     </Shell>
+  );
+}
+
+// 紹介コードの入力欄。正しいコードのときだけ次へ進める。コードがない人は通常の紹介として進める。
+function CodeInput({ initial, onSubmit }: { initial: string; onSubmit: (code: string) => void }) {
+  const [value, setValue] = useState(initial);
+  const [error, setError] = useState(false);
+
+  const submit = () => {
+    if (findReferralCode(value)) {
+      onSubmit(value.trim());
+    } else {
+      setError(true);
+    }
+  };
+
+  return (
+    <form
+      className="mt-6 flex flex-col gap-3"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <input
+        value={value}
+        onChange={(e) => {
+          setValue(e.target.value);
+          setError(false);
+        }}
+        inputMode="numeric"
+        autoComplete="off"
+        placeholder="コードを入力"
+        aria-label="紹介コード"
+        aria-invalid={error}
+        className={`rounded-2xl border-2 bg-white px-5 py-4 text-center text-2xl font-black tracking-[0.3em] text-slate-900 shadow-sm outline-none transition placeholder:text-base placeholder:font-bold placeholder:tracking-normal placeholder:text-slate-300 focus:border-emerald-600 ${
+          error ? "border-rose-400" : "border-slate-200"
+        }`}
+      />
+      {error && <p className="text-sm font-bold text-rose-600">コードが正しくありません。もう一度ご確認ください。</p>}
+      <button
+        type="submit"
+        disabled={!value.trim()}
+        className="rounded-full bg-emerald-600 py-4 text-base font-black text-white shadow-lg shadow-emerald-200 transition active:scale-[0.98] active:bg-emerald-700 disabled:bg-slate-300 disabled:shadow-none"
+      >
+        決定
+      </button>
+      <button
+        type="button"
+        onClick={() => onSubmit("")}
+        className="text-sm font-bold text-slate-500 underline underline-offset-4"
+      >
+        コードをお持ちでない方はこちら
+      </button>
+    </form>
   );
 }
 

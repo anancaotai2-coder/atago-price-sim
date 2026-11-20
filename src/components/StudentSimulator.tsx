@@ -10,7 +10,9 @@ import {
   PriceData,
   SafetyPackChoice,
   StudentInfo,
+  CLUB_REFERRAL_TYPE_ID,
   calcSchoolPrice,
+  findReferralCode,
   isStudentNightFree,
 } from "@/lib/pricing";
 
@@ -32,6 +34,10 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   const [guaranteeAge, setGuaranteeAge] = useState("");
   // 紹介の種類（ReferralType.id）。null は紹介者なし。
   const [referralTypeId, setReferralTypeId] = useState<string | null>(null);
+  // 部活・サークルからの紹介のときに入力する紹介コード。
+  const [referralCodeInput, setReferralCodeInput] = useState("");
+  const isClubReferral = referralTypeId === CLUB_REFERRAL_TYPE_ID;
+  const referralCode = isClubReferral ? findReferralCode(referralCodeInput) : null;
 
   // 高校生は安心保証コースの対象外。
   const isHighSchool = attribute === "student" && studentCategory === "highschool";
@@ -49,15 +55,16 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
   }, [data, attribute, studentCategory, studentSchoolId]);
 
   const target = data.schools.find((s) => s.isTarget);
-  const nightFree = !!target && attribute === "student" && isStudentNightFree(target, "student");
+  // 紹介コードの固定料金は学生の夜間サービスと併用しない。
+  const nightFree = !referralCode && !!target && attribute === "student" && isStudentNightFree(target, "student");
 
   const rows = useMemo(() => {
     const results = data.schools.map((school) => {
       const referral = data.referralTypes.find((r) => r.id === referralTypeId) ?? null;
       return {
         school,
-        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referral, student),
-        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referral, student),
+        at: calcSchoolPrice(school, pattern, "AT", attribute, night, safetyPack, data.anxietyScenario, referral, student, referralCode),
+        mt: calcSchoolPrice(school, pattern, "MT", attribute, night, safetyPack, data.anxietyScenario, referral, student, referralCode),
       };
     });
 
@@ -67,7 +74,7 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
     return results
       .map((r) => ({ ...r, isCheapestAt: r.at.total === minAt, isCheapestMt: r.mt.total === minMt }))
       .sort((a, b) => Number(b.school.isTarget) - Number(a.school.isTarget));
-  }, [data, pattern, attribute, night, safetyPack, referralTypeId, student]);
+  }, [data, pattern, attribute, night, safetyPack, referralTypeId, student, referralCode]);
 
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6">
@@ -275,6 +282,34 @@ export default function StudentSimulator({ data }: { data: PriceData }) {
                 </button>
               ))}
             </div>
+            {isClubReferral && (
+              <div className="mt-4 rounded-xl bg-slate-50 p-4 ring-1 ring-slate-200">
+                <label htmlFor="referral-code" className="text-sm font-semibold text-slate-700">
+                  コードを打ち込んでください
+                </label>
+                <p className="mt-1 text-xs text-slate-500">
+                  部活・サークルの方からお伝えしているコードを入力してください。コードによって料金の取り扱いが変わります。
+                </p>
+                <input
+                  id="referral-code"
+                  value={referralCodeInput}
+                  onChange={(e) => setReferralCodeInput(e.target.value)}
+                  inputMode="numeric"
+                  autoComplete="off"
+                  placeholder="コードを入力"
+                  className="mt-3 w-48 rounded-lg border border-slate-300 bg-white px-3 py-2 text-lg font-bold tracking-widest outline-none focus:border-emerald-700 focus:ring-2 focus:ring-emerald-700"
+                />
+                {referralCode && (
+                  <p className="mt-2 text-sm font-semibold text-emerald-800">
+                    ✓ {referralCode.label}が適用されます（教習料金 AT {formatYen(referralCode.fixedPriceAT)}・MT{" "}
+                    {formatYen(referralCode.fixedPriceMT)}／税込）。他のキャンペーンとは併用できません。
+                  </p>
+                )}
+                {!referralCode && referralCodeInput.trim() !== "" && (
+                  <p className="mt-2 text-sm font-semibold text-rose-600">コードが正しくありません。</p>
+                )}
+              </div>
+            )}
           </>
         )}
       </section>

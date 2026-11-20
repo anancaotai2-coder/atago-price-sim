@@ -78,6 +78,28 @@ export function defaultReferralTypes(): ReferralType[] {
   ];
 }
 
+// 部活・サークルからの紹介（defaultReferralTypes の id）。これを選んだ人にだけ紹介コードを聞く。
+export const CLUB_REFERRAL_TYPE_ID = "referral-club";
+
+// 紹介コード。コードごとに当校の教習料金を固定額（税込）にする。固定額は他の割引・キャンペーンと併用不可。
+// コードによって取り扱いを変えられるように一覧で持つ（今は「0000」の1つだけ）。
+export interface ReferralCode {
+  code: string;
+  label: string;
+  fixedPriceAT: number;
+  fixedPriceMT: number;
+}
+
+export const REFERRAL_CODES: ReferralCode[] = [
+  { code: "0000", label: "部活・サークル特別料金", fixedPriceAT: 300000, fixedPriceMT: 320000 },
+];
+
+export function findReferralCode(input: string | null | undefined): ReferralCode | null {
+  const code = (input ?? "").trim();
+  if (!code) return null;
+  return REFERRAL_CODES.find((c) => c.code === code) ?? null;
+}
+
 // 生徒が在学している大学・専門学校。管理画面で追加し、教習所ごとに割引額を設定する。
 export interface StudentSchool {
   id: string;
@@ -231,20 +253,28 @@ export function calcSchoolPrice(
   safetyPack: SafetyPackChoice,
   scenario: AnxietyScenario,
   referral: ReferralType | null,
-  student: StudentInfo = { schoolId: null, schoolName: null }
+  student: StudentInfo = { schoolId: null, schoolName: null },
+  referralCode: ReferralCode | null = null
 ): PatternResult {
   const p = school.pricing;
   const blocked = isGuaranteeBlocked(safetyPack, license);
   const safetyOn = safetyPack.enabled && !blocked;
-  const activeCampaigns = school.campaigns.filter(
-    (c) => c.enabled && isApplicable(c.applicability, pattern, safetyOn)
-  );
+  // 紹介コードの固定料金は当校だけに適用する。適用中は学生割引・キャンペーン・紹介割引・学生の夜間サービスを併用しない。
+  const fixedCode = school.isTarget ? referralCode : null;
+  const activeCampaigns = fixedCode
+    ? []
+    : school.campaigns.filter((c) => c.enabled && isApplicable(c.applicability, pattern, safetyOn));
   const couponCount = activeCampaigns.reduce((sum, c) => sum + c.freeCouponCount, 0);
   const retestCount = activeCampaigns.reduce((sum, c) => sum + c.freeRetestCount, 0);
   const breakdown: BreakdownItem[] = [];
 
-  const base = license === "AT" ? p.baseAT : p.baseMT;
-  breakdown.push({ label: "基本料金", amount: base });
+  if (fixedCode) {
+    const fixed = license === "AT" ? fixedCode.fixedPriceAT : fixedCode.fixedPriceMT;
+    breakdown.push({ label: `${fixedCode.label}（教習料金・税込）`, amount: fixed });
+  } else {
+    const base = license === "AT" ? p.baseAT : p.baseMT;
+    breakdown.push({ label: "基本料金", amount: base });
+  }
 
   if (pattern === "fast" && p.shortTermSurcharge) {
     breakdown.push({ label: "スピードコース加算", amount: p.shortTermSurcharge });
@@ -296,14 +326,14 @@ export function calcSchoolPrice(
   }
 
   if (night && p.nightSurcharge) {
-    if (isStudentNightFree(school, attribute)) {
+    if (!fixedCode && isStudentNightFree(school, attribute)) {
       breakdown.push({ label: "夜間料金（学生はサービス）", amount: 0, free: true });
     } else {
       breakdown.push({ label: "夜間料金加算", amount: p.nightSurcharge });
     }
   }
 
-  if (attribute === "student" && isApplicable(p.studentDiscountApplicability, pattern, safetyOn)) {
+  if (!fixedCode && attribute === "student" && isApplicable(p.studentDiscountApplicability, pattern, safetyOn)) {
     // リストの大学・専門学校を選んだ場合は、学校別の割引額に置き換える。
     const amount = student.schoolId ? school.studentSchoolDiscounts[student.schoolId] ?? 0 : p.studentDiscount;
     if (amount) {
@@ -318,7 +348,7 @@ export function calcSchoolPrice(
     }
   }
 
-  if (referral) {
+  if (referral && !fixedCode) {
     const amount = school.referralTypeDiscounts[referral.id] ?? 0;
     if (amount) {
       breakdown.push({ label: `紹介割引（${referral.name || "名称未設定"}）`, amount: -amount });
@@ -329,6 +359,9 @@ export function calcSchoolPrice(
 
   // 今の選択で実際に料金へ反映されているブロックの注釈だけを集める。
   const notes: string[] = [];
+  if (fixedCode) {
+    notes.push(`${fixedCode.label}が適用されています。学生割引・紹介割引・キャンペーンなど、他の割引とは併用できません。`);
+  }
   if (blocked && school.isTarget) {
     notes.push(`MT（マニュアル）は${safetyPack.tier?.label ?? ""}の安心保証コースをつけられないため、保証なしで計算しています。`);
   }
@@ -336,7 +369,7 @@ export function calcSchoolPrice(
     notes.push(`安心保証コースの対象外：${GUARANTEE_COVERAGE.notCovered.join("、")}`);
   }
   if (p.pricingNote) notes.push(p.pricingNote);
-  if (p.discountNote) notes.push(p.discountNote);
+  if (p.discountNote && !fixedCode) notes.push(p.discountNote);
   for (const c of activeCampaigns) {
     if (c.note) notes.push(c.note);
   }
